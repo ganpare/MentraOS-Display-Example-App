@@ -145,7 +145,7 @@
             <label for="fileInput" class="file-input-label">
                 📁 ファイルを選択
             </label>
-            <input type="file" id="fileInput" accept=".txt,.text" />
+            <input type="file" id="fileInput" accept=".txt,.text,.md,.markdown" />
         </div>
         
         <div class="text-input-wrapper">
@@ -153,6 +153,15 @@
         </div>
         
         <button id="displayBtn">ARグラスに表示</button>
+        
+        <!-- ナビゲーションボタンエリア（テキスト表示後に表示） -->
+        <div id="navigationArea" style="display: none; margin-top: 20px;">
+            <div style="display: flex; gap: 10px;">
+                <button id="prevBtn" style="flex: 1; background: #6c757d;">← 前へ</button>
+                <button id="nextBtn" style="flex: 1; background: #667eea;">次へ →</button>
+            </div>
+            <div id="pageInfo" style="text-align: center; margin-top: 10px; color: #666; font-size: 14px;"></div>
+        </div>
         
         <div id="status" class="status"></div>
         <div id="fileInfo" class="file-info" style="display: none;"></div>
@@ -167,8 +176,110 @@
         const displayBtn = document.getElementById('displayBtn');
         const statusEl = document.getElementById('status');
         const fileInfoEl = document.getElementById('fileInfo');
+        const navigationArea = document.getElementById('navigationArea');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const pageInfoEl = document.getElementById('pageInfo');
 
         let selectedFile = null;
+        
+        // クライアント側でページングを管理
+        class TextPager {
+            constructor(text, maxCharsPerPage = 150) {
+                this.pages = [];
+                this.currentPage = 0;
+                this.maxCharsPerPage = maxCharsPerPage;
+                this.splitIntoPages(text);
+            }
+
+            splitIntoPages(text) {
+                this.pages = [];
+                if (!text || text.trim().length === 0) {
+                    this.pages = [''];
+                    return;
+                }
+
+                const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+                const paragraphs = cleanText.split('\n');
+                
+                let currentPage = '';
+                for (let i = 0; i < paragraphs.length; i++) {
+                    const paragraph = paragraphs[i].trim();
+                    if (!paragraph) {
+                        if (currentPage) currentPage += '\n';
+                        continue;
+                    }
+
+                    if ((currentPage + paragraph).length <= this.maxCharsPerPage) {
+                        if (currentPage) currentPage += '\n';
+                        currentPage += paragraph;
+                    } else {
+                        if (currentPage) {
+                            this.pages.push(currentPage.trim());
+                            currentPage = '';
+                        }
+
+                        let remaining = paragraph;
+                        while (remaining.length > 0) {
+                            if (remaining.length <= this.maxCharsPerPage) {
+                                currentPage = remaining;
+                                remaining = '';
+                            } else {
+                                let splitIndex = this.maxCharsPerPage;
+                                const lastSpaceIndex = remaining.lastIndexOf(' ', this.maxCharsPerPage);
+                                if (lastSpaceIndex > this.maxCharsPerPage * 0.7) {
+                                    splitIndex = lastSpaceIndex;
+                                }
+                                this.pages.push(remaining.substring(0, splitIndex).trim());
+                                remaining = remaining.substring(splitIndex).trim();
+                            }
+                        }
+                    }
+                }
+
+                if (currentPage) {
+                    this.pages.push(currentPage.trim());
+                }
+
+                if (this.pages.length === 0) {
+                    this.pages = [''];
+                }
+            }
+
+            getCurrentPage() {
+                return this.pages[this.currentPage] || '';
+            }
+
+            nextPage() {
+                if (this.currentPage < this.pages.length - 1) {
+                    this.currentPage++;
+                    return true;
+                }
+                return false;
+            }
+
+            prevPage() {
+                if (this.currentPage > 0) {
+                    this.currentPage--;
+                    return true;
+                }
+                return false;
+            }
+
+            getCurrentPageNumber() {
+                return this.currentPage + 1;
+            }
+
+            getTotalPages() {
+                return this.pages.length;
+            }
+
+            getPageInfo() {
+                return `${this.getCurrentPageNumber()}/${this.getTotalPages()}`;
+            }
+        }
+
+        let textPager = null;
 
         // ファイル選択
         fileInput.addEventListener('change', async (e) => {
@@ -182,14 +293,18 @@
             fileInfoEl.style.display = 'block';
 
             // テキストファイルを読み込んでtextareaに表示
-            if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+            if (file.type === 'text/plain' || 
+                file.type === 'text/markdown' || 
+                file.name.endsWith('.txt') || 
+                file.name.endsWith('.md') || 
+                file.name.endsWith('.markdown')) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     textInput.value = e.target.result;
                 };
                 reader.readAsText(file);
             } else {
-                statusEl.textContent = 'テキストファイル(.txt)を選択してください';
+                statusEl.textContent = 'テキストファイル(.txt, .md)を選択してください';
                 statusEl.className = 'status error';
             }
         });
@@ -238,11 +353,18 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    // クライアント側でページングを初期化
+                    textPager = new TextPager(text);
+                    
+                    // 最初のページをARグラスに表示
+                    await displayCurrentPage();
+                    
+                    // ナビゲーションボタンを表示
+                    navigationArea.style.display = 'block';
+                    updatePageInfo();
+                    
                     statusEl.textContent = '✅ ARグラスに表示しました！';
                     statusEl.className = 'status success';
-                    
-                    // サーバー側のセッションにテキストを送信して表示
-                    await displayTextToGlasses(text);
                 } else {
                     statusEl.textContent = '❌ エラー: ' + data.error;
                     statusEl.className = 'status error';
@@ -255,23 +377,96 @@
             }
         });
 
-        // ARグラスにテキストを表示
-        async function displayTextToGlasses(text) {
-            // サーバー側で表示するため、ここではAPIを呼び出すだけ
-            // 実際の表示はサーバー側のonSessionで処理されます
+        // 現在のページをARグラスに表示（クライアント側でページング管理）
+        async function displayCurrentPage() {
+            if (!textPager) {
+                console.error('TextPagerが初期化されていません');
+                return;
+            }
+
+            const pageText = textPager.getCurrentPage();
+            const pageInfo = textPager.getPageInfo();
+
+            if (!pageText) {
+                console.error('ページテキストが空です');
+                return;
+            }
+
+            // テキストのクリーンアップ（制御文字を除去、改行は保持）
+            const cleanText = pageText
+                .replace(/[^\x20-\x7E\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\n]/g, '')
+                .trim();
+
+            if (!cleanText) {
+                console.error('クリーンアップ後のテキストが空です');
+                return;
+            }
+
+            // ARグラスにページテキストとページ情報を表示
+            const displayText = `${cleanText}\n\n${pageInfo}`;
+
             try {
-                await fetch(`${apiBaseUrl}/api/display-text`, {
+                // サーバーに表示するテキストだけを送信
+                const response = await fetch(`${apiBaseUrl}/api/display-text`, {
                     method: 'POST',
-                    credentials: 'include', // クッキーを送信
+                    credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify({ text: displayText })
                 });
+
+                const data = await response.json();
+                if (!data.success) {
+                    console.error('Display error:', data.error);
+                }
             } catch (error) {
                 console.error('Display error:', error);
             }
         }
+
+        // ページ情報を更新
+        function updatePageInfo() {
+            if (textPager) {
+                pageInfoEl.textContent = `ページ ${textPager.getPageInfo()}`;
+            }
+        }
+
+        // 前へボタン
+        prevBtn.addEventListener('click', async () => {
+            if (!textPager) return;
+            
+            prevBtn.disabled = true;
+            if (textPager.prevPage()) {
+                await displayCurrentPage();
+                updatePageInfo();
+            } else {
+                statusEl.textContent = '最初のページです';
+                statusEl.className = 'status';
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 2000);
+            }
+            prevBtn.disabled = false;
+        });
+
+        // 次へボタン
+        nextBtn.addEventListener('click', async () => {
+            if (!textPager) return;
+            
+            nextBtn.disabled = true;
+            if (textPager.nextPage()) {
+                await displayCurrentPage();
+                updatePageInfo();
+            } else {
+                statusEl.textContent = '最後のページです';
+                statusEl.className = 'status';
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 2000);
+            }
+            nextBtn.disabled = false;
+        });
     </script>
 </body>
 </html>
