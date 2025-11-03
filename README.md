@@ -45,9 +45,14 @@ MentraOS install links: [mentra.glass/install](https://mentra.glass/install)
      PORT=3000
      PACKAGE_NAME=com.yourName.yourAppName
      MENTRAOS_API_KEY=your_api_key_from_console
+     COOKIE_SECRET=your-secret-key-change-this-in-production
+     SERVER_URL=https://your-server-url.com
+     WEBVIEW_URL=https://your-server-url.com/webview/
      ```
    * Make sure the `PACKAGE_NAME` matches what you registered in the MentraOS Console
    * Get your `API_KEY` from the MentraOS Developer Console
+   * Set `SERVER_URL` to your public server URL (e.g., your ngrok URL)
+   * Set `WEBVIEW_URL` to your webview URL (defaults to `${SERVER_URL}/webview/` if not set)
 
 6. Run your app with `bun run dev`
 
