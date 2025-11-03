@@ -42,7 +42,7 @@
 ### 動作環境
 - **サーバー**: Node.js/Bun
 - **ポート**: 3033（環境変数で変更可能）
-- **公開URL**: https://mentra-app.sunandgo35.com（Cloudflare Tunnel経由）
+- **公開URL**: `.env`ファイルの`SERVER_URL`環境変数から設定
 
 ## 📝 注意事項
 - 音声認識機能を使用するには、MentraOS Developer Consoleでマイク権限を有効にする必要があります
