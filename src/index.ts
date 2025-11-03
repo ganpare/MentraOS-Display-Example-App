@@ -16,22 +16,52 @@ class ExampleMentraOSApp extends AppServer {
   }
 
   protected async onSession(session: AppSession, sessionId: string, userId: string): Promise<void> {
-    // Show welcome message
-    session.layouts.showTextWall("Example App is ready!");
+    // セッション開始時にHello Worldを表示（グラスとiPhoneアプリの両方に）
+    // durationMsを指定しないと、次の表示まで残り続けます
+    session.layouts.showTextWall("Hello World! 👋", {
+      view: ViewType.MAIN
+    });
+    session.layouts.showTextWall("Hello World! 👋", {
+      view: ViewType.DASHBOARD
+    });
 
-    // Handle real-time transcription
-    // requires microphone permission to be set in the developer console
-    session.events.onTranscription((data) => {
-      if (data.isFinal) {
-        session.layouts.showTextWall("You said: " + data.text, {
-          view: ViewType.MAIN,
-          durationMs: 3000
-        });
-      }
-    })
-
+    // バッテリー情報を表示
     session.events.onGlassesBattery((data) => {
       console.log('Glasses battery:', data);
+      // グラスに表示
+      session.layouts.showTextWall(`バッテリー: ${data.level}%`, {
+        view: ViewType.MAIN,
+        durationMs: 5000
+      });
+      // iPhoneアプリにも表示
+      session.layouts.showTextWall(`バッテリー: ${data.level}%`, {
+        view: ViewType.DASHBOARD,
+        durationMs: 5000
+      });
+    })
+
+    // ライブキャプション機能（リアルタイム音声認識）
+    // マイクの権限がデベロッパーコンソールで設定されている必要があります
+    session.events.onTranscription((data) => {
+      if (data.isFinal) {
+        // 確定したテキストを表示
+        session.layouts.showTextWall("聞こえました: " + data.text, {
+          view: ViewType.MAIN,
+          durationMs: 5000
+        });
+        session.layouts.showTextWall("聞こえました: " + data.text, {
+          view: ViewType.DASHBOARD,
+          durationMs: 5000
+        });
+      } else {
+        // ライブキャプション：リアルタイムで更新される途中のテキスト
+        session.layouts.showTextWall("聞いています: " + data.text, {
+          view: ViewType.MAIN
+        });
+        session.layouts.showTextWall("聞いています: " + data.text, {
+          view: ViewType.DASHBOARD
+        });
+      }
     })
   }
 }
