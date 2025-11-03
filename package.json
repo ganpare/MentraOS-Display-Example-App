@@ -12,7 +12,11 @@
   "description": "",
   "dependencies": {
     "@mentra/sdk": "latest",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/multer": "^2.0.0",
+    "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
+    "multer": "^2.0.2",
     "ws": "^8.18.1"
   },
   "devDependencies": {
