@@ -62,6 +62,55 @@ MentraOS install links: [mentra.glass/install](https://mentra.glass/install)
     * `3000` is the port. It must match what is in the app config. For example, if you entered `port: 8080`, use `8080` for ngrok instead.
 
 
+## Quick Start (起動手順)
+
+サーバーを起動するには以下の手順を実行してください：
+
+### 前提条件
+- [Bun](https://bun.sh/docs/installation) がインストールされていること
+- `.env` ファイルが設定されていること（上記の手順5を参照）
+
+### 開発環境での起動
+
+```bash
+# プロジェクトディレクトリに移動
+cd AugmentOS-Cloud-Example-App
+
+# 依存パッケージのインストール（初回のみ）
+bun install
+
+# 開発サーバーを起動（ホットリロード有効）
+bun --hot src/index.ts
+# または
+bun run dev
+```
+
+サーバーが起動すると、以下のようなメッセージが表示されます：
+```
+🎯 App server running at http://localhost:3033
+📂 Serving static files from ./public
+```
+
+### 本番環境での起動
+
+```bash
+# 本番モードで起動
+bun src/index.ts
+# または
+bun run start
+```
+
+### トラブルシューティング
+
+**パスエラーが発生する場合:**
+- `@mentra/sdk` が正しくインストールされているか確認してください
+- `bun install` を再度実行してみてください
+
+**ポートが使用中の場合:**
+- `.env` ファイルの `PORT` を変更してください
+- ngrok を使用する場合は、ngrok のポート番号も合わせて変更してください
+
+
 ### Next Steps
 
 Check out the full documentation at [docs.mentra.glass](https://docs.mentra.glass/core-concepts)
