@@ -1,4 +1,6 @@
 import { AppServer, AppSession, ViewType } from '@mentra/sdk';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const PACKAGE_NAME = process.env.PACKAGE_NAME ?? (() => { throw new Error('PACKAGE_NAME is not set in .env file'); })();
 const MENTRAOS_API_KEY = process.env.MENTRAOS_API_KEY ?? (() => { throw new Error('MENTRAOS_API_KEY is not set in .env file'); })();
@@ -6,6 +8,8 @@ const PORT = parseInt(process.env.PORT || '3000');
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'your-secret-key-change-this-in-production';
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 const WEBVIEW_URL = process.env.WEBVIEW_URL || `${SERVER_URL}/webview/`;
+const AUDIO_SOURCE_DIR = process.env.AUDIO_SOURCE_DIR || '';
+const DEBUG = process.env.DEBUG === 'true';
 
 // テキストページング処理クラス（サーバー側で管理）
 class TextPager {
@@ -105,6 +109,58 @@ class TextPager {
   }
 }
 
+// SRT字幕パーサークラス
+interface SubtitleEntry {
+  index: number;
+  startTime: number; // 秒単位
+  endTime: number; // 秒単位
+  text: string;
+}
+
+class SRTParser {
+  static parse(content: string): SubtitleEntry[] {
+    const entries: SubtitleEntry[] = [];
+    const blocks = content.trim().split(/\n\s*\n/);
+    
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      if (lines.length < 3) continue;
+      
+      const index = parseInt(lines[0]);
+      if (isNaN(index)) continue;
+      
+      const timecode = lines[1];
+      const timeMatch = timecode.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+      if (!timeMatch) continue;
+      
+      const startTime = 
+        parseInt(timeMatch[1]) * 3600 +
+        parseInt(timeMatch[2]) * 60 +
+        parseInt(timeMatch[3]) +
+        parseInt(timeMatch[4]) / 1000;
+      
+      const endTime = 
+        parseInt(timeMatch[5]) * 3600 +
+        parseInt(timeMatch[6]) * 60 +
+        parseInt(timeMatch[7]) +
+        parseInt(timeMatch[8]) / 1000;
+      
+      const text = lines.slice(2).join(' ').trim();
+      
+      if (text) {
+        entries.push({
+          index,
+          startTime,
+          endTime,
+          text
+        });
+      }
+    }
+    
+    return entries.sort((a, b) => a.startTime - b.startTime);
+  }
+}
+
 class ExampleMentraOSApp extends AppServer {
   // セッションごとのセッションオブジェクトを管理
   private sessions: Map<string, AppSession> = new Map();
@@ -114,61 +170,85 @@ class ExampleMentraOSApp extends AppServer {
   private sessionTexts: Map<string, string> = new Map();
   // セッションごとのページング状態を管理（サーバー側でページング処理）
   private sessionPagers: Map<string, TextPager> = new Map();
-  // APIエンドポイントが既に設定されたかどうか
-  private apiEndpointsSetup: boolean = false;
+  // 字幕データのキャッシュ（ファイルID -> 字幕エントリ配列）
+  private subtitleCache: Map<string, SubtitleEntry[]> = new Map();
 
   constructor() {
     super({
       packageName: PACKAGE_NAME,
       apiKey: MENTRAOS_API_KEY,
       port: PORT,
-      publicDir: './public', // Webview用の静的ファイルをホスト
-      cookieSecret: COOKIE_SECRET, // Cookie署名用の秘密鍵を設定
+      publicDir: './public',
+      cookieSecret: COOKIE_SECRET,
     });
     
     // APIエンドポイントをコンストラクタで設定（サーバー起動時に利用可能にする）
     this.setupFileAPI();
     this.setupMediaControllerAPI();
+    this.setupAudioAPI();
+  }
+
+  // 認証ミドルウェアの設定を共通化
+  private createAuthMiddlewareForPath(path: string) {
+    const webviewPath = require('path').join(__dirname, '../node_modules/@mentra/sdk/dist/app/webview/index.js');
+    const { createAuthMiddleware } = require(webviewPath);
+    return createAuthMiddleware({
+      apiKey: MENTRAOS_API_KEY,
+      packageName: PACKAGE_NAME,
+      cookieSecret: COOKIE_SECRET,
+      getAppSessionForUser: (userId: string) => {
+        const sessionId = this.userIdToSessionId.get(userId);
+        return sessionId ? this.sessions.get(sessionId) || null : null;
+      }
+    });
+  }
+
+  // デバッグログ出力ヘルパー
+  private debugLog(message: string, ...args: any[]): void {
+    if (DEBUG) {
+      console.log(`[デバッグ] ${message}`, ...args);
+    }
+  }
+
+  private debugError(message: string, ...args: any[]): void {
+    if (DEBUG) {
+      console.error(`[デバッグ] ${message}`, ...args);
+    }
   }
 
   protected async onSession(session: AppSession, sessionId: string, userId: string): Promise<void> {
     try {
-      console.log(`[デバッグ] onSession開始: sessionId=${sessionId}, userId=${userId}`);
+      this.debugLog(`onSession開始: sessionId=${sessionId}, userId=${userId}`);
       
       // セッションを保存
       this.sessions.set(sessionId, session);
       this.userIdToSessionId.set(userId, sessionId);
-      console.log(`[デバッグ] セッション保存完了`);
+      this.debugLog(`セッション保存完了`);
+      this.debugLog(`userIdToSessionIdマップの状態:`, Array.from(this.userIdToSessionId.entries()));
+      this.debugLog(`sessionsマップの状態:`, Array.from(this.sessions.keys()));
 
       // セッション開始時に案内を表示
-      console.log(`[デバッグ] テキスト表示開始`);
       session.layouts.showTextWall("ボタンを押してください", {
         view: ViewType.MAIN
       });
-      console.log(`[デバッグ] ARグラスに表示成功`);
       
       session.layouts.showTextWall(`セッションID: ${sessionId}\nボタンを押してください`, {
         view: ViewType.DASHBOARD
       });
-      console.log(`[デバッグ] iPhoneアプリに表示成功`);
-
-      // APIエンドポイントはコンストラクタで設定済み（サーバー起動時に利用可能）
 
       // セッション終了時のクリーンアップ
       session.events.onDisconnected(() => {
-        console.log(`[デバッグ] セッション終了: sessionId=${sessionId}`);
+        this.debugLog(`セッション終了: sessionId=${sessionId}`);
         this.sessions.delete(sessionId);
         this.sessionTexts.delete(sessionId);
         this.sessionPagers.delete(sessionId);
         this.userIdToSessionId.delete(userId);
       });
 
-      console.log(`[デバッグ] onSession完了`);
+      this.debugLog(`onSession完了`);
     } catch (error: any) {
-      console.error(`[デバッグ] onSessionエラー:`, error);
-      console.error(`[デバッグ] エラーメッセージ:`, error.message);
-      console.error(`[デバッグ] エラースタック:`, error.stack);
-      throw error; // エラーを再スローして、AppServerに伝える
+      console.error(`[エラー] onSessionエラー:`, error);
+      throw error;
     }
   }
 
@@ -183,7 +263,7 @@ class ExampleMentraOSApp extends AppServer {
     );
     
     if (hasUploadRoute) {
-      console.log('[デバッグ] APIエンドポイントは既に設定済みです');
+      this.debugLog('APIエンドポイントは既に設定済みです');
       return;
     }
 
@@ -191,16 +271,18 @@ class ExampleMentraOSApp extends AppServer {
     const upload = multer({ storage: multer.memoryStorage() });
 
     // 全てのリクエストをログに記録（デバッグ用）
-    app.use('/api', (req: any, res: any, next: any) => {
-      console.log(`[デバッグ] リクエスト受信: ${req.method} ${req.path}`);
-      console.log(`[デバッグ] リクエストヘッダー:`, {
-        'content-type': req.headers['content-type'],
-        'origin': req.headers['origin'],
-        'referer': req.headers['referer'],
-        'user-agent': req.headers['user-agent']
+    if (DEBUG) {
+      app.use('/api', (req: any, res: any, next: any) => {
+        this.debugLog(`リクエスト受信: ${req.method} ${req.path}`);
+        this.debugLog(`リクエストヘッダー:`, {
+          'content-type': req.headers['content-type'],
+          'origin': req.headers['origin'],
+          'referer': req.headers['referer'],
+          'user-agent': req.headers['user-agent']
+        });
+        next();
       });
-      next();
-    });
+    }
 
     // 注意: AppServerのコンストラクタで既にcookie-parserと認証ミドルウェアが設定されているため、
     // ここでは重複して設定しない
@@ -208,23 +290,42 @@ class ExampleMentraOSApp extends AppServer {
     // テキストファイルをアップロードして表示
     app.post('/api/upload-text', upload.single('file'), async (req: any, res: any) => {
       try {
-        console.log('[デバッグ] /api/upload-text リクエスト受信');
+        this.debugLog('/api/upload-text リクエスト受信');
         const userId = (req as any).authUserId;
-        console.log('[デバッグ] userId:', userId);
+        this.debugLog('userId:', userId);
+        this.debugLog('userIdToSessionIdマップ:', Array.from(this.userIdToSessionId.entries()));
+        this.debugLog('sessionsマップ:', Array.from(this.sessions.keys()));
         
         if (!userId) {
-          console.error('[デバッグ] 認証エラー: userIdが見つかりません');
+          this.debugError('認証エラー: userIdが見つかりません');
           return res.status(401).json({ success: false, error: '認証が必要です' });
         }
 
         const sessionId = this.userIdToSessionId.get(userId);
+        this.debugLog('取得したsessionId:', sessionId);
+        
         if (!sessionId) {
-          return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+          this.debugError('セッションが見つかりません', {
+            userId,
+            userIdToSessionIdKeys: Array.from(this.userIdToSessionId.keys()),
+            sessionKeys: Array.from(this.sessions.keys())
+          });
+          return res.status(404).json({ 
+            success: false, 
+            error: 'セッションが見つかりません。アプリを再起動してください。'
+          });
         }
 
         const session = this.sessions.get(sessionId);
         if (!session) {
-          return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+          this.debugError('セッションオブジェクトが見つかりません', {
+            sessionId,
+            sessionKeys: Array.from(this.sessions.keys())
+          });
+          return res.status(404).json({ 
+            success: false, 
+            error: 'セッションが見つかりません。アプリを再起動してください。'
+          });
         }
 
         let textContent = '';
@@ -239,14 +340,27 @@ class ExampleMentraOSApp extends AppServer {
           return res.status(400).json({ success: false, error: 'ファイルまたはテキストが必要です' });
         }
 
+        // フォント設定関連のコード（現在はコメントアウト）
+        // 注意: MentraOS SDKのshowTextWallは現在、fontSize、lineHeight、fontFamilyオプションをサポートしていません
+        // 将来のSDK対応に備えてコードは残していますが、現在は動作しません
+        // const fontSize = req.body.fontSize ? parseInt(req.body.fontSize) : 16;
+        // const lineHeight = req.body.lineHeight ? parseFloat(req.body.lineHeight) : 1.5;
+        // const fontFamily = req.body.fontFamily || 'default';
+        // this.sessionDisplaySettings.set(sessionId, {
+        //   fontSize,
+        //   lineHeight,
+        //   fontFamily
+        // });
+        // console.log(`[デバッグ] 表示設定を保存: fontSize=${fontSize}, lineHeight=${lineHeight}, fontFamily=${fontFamily}`);
+
         // セッションごとにテキストを保存
         this.sessionTexts.set(sessionId, textContent);
-        console.log(`[デバッグ] テキストを受信: 長さ=${textContent.length}文字`);
+        this.debugLog(`テキストを受信: 長さ=${textContent.length}文字`);
 
         // サーバー側でページング処理を初期化
         const pager = new TextPager(textContent);
         this.sessionPagers.set(sessionId, pager);
-        console.log(`[デバッグ] TextPager初期化完了: ページ数=${pager.getTotalPages()}`);
+        this.debugLog(`TextPager初期化完了: ページ数=${pager.getTotalPages()}`);
 
         // 最初のページをARグラスに表示
         await this.displayCurrentPage(session, sessionId);
@@ -290,7 +404,7 @@ class ExampleMentraOSApp extends AppServer {
   private async displayCurrentPage(session: AppSession, sessionId: string): Promise<void> {
     const pager = this.sessionPagers.get(sessionId);
     if (!pager) {
-      console.error(`[デバッグ] TextPagerが見つかりません: sessionId=${sessionId}`);
+      this.debugError(`TextPagerが見つかりません: sessionId=${sessionId}`);
       return;
     }
 
@@ -298,7 +412,7 @@ class ExampleMentraOSApp extends AppServer {
     const pageInfo = pager.getPageInfo();
 
     if (!pageText) {
-      console.error('[デバッグ] ページテキストが空です');
+      this.debugError('ページテキストが空です');
       return;
     }
 
@@ -308,14 +422,49 @@ class ExampleMentraOSApp extends AppServer {
       .trim();
 
     if (!cleanText) {
-      console.error('[デバッグ] クリーンアップ後のテキストが空です');
+      this.debugError('クリーンアップ後のテキストが空です');
       return;
     }
 
     // ARグラスにページテキストとページ情報を表示
     const displayText = `${cleanText}\n\n${pageInfo}`;
-    console.log(`[デバッグ] ページ表示: ${pageInfo}, テキスト長=${cleanText.length}`);
+    this.debugLog(`ページ表示: ${pageInfo}, テキスト長=${cleanText.length}`);
 
+    // フォント設定関連のコード（現在はコメントアウト）
+    // 注意: MentraOS SDKのshowTextWallは現在、fontSize、lineHeight、fontFamilyオプションをサポートしていません
+    // 将来のSDK対応に備えてコードは残していますが、現在は動作しません
+    // const settings = this.sessionDisplaySettings.get(sessionId) || {
+    //   fontSize: 16,
+    //   lineHeight: 1.5,
+    //   fontFamily: 'default'
+    // };
+    // const fontFamilyMap: Record<string, string> = {
+    //   'default': 'system-ui, -apple-system, sans-serif',
+    //   'sans-serif': 'sans-serif',
+    //   'serif': 'serif',
+    //   'monospace': 'monospace'
+    // };
+    // const fontFamily = fontFamilyMap[settings.fontFamily] || fontFamilyMap['default'];
+    // const displayOptions: any = {
+    //   view: ViewType.MAIN
+    // };
+    // if (settings.fontSize) {
+    //   displayOptions.fontSize = settings.fontSize;
+    // }
+    // if (settings.lineHeight) {
+    //   displayOptions.lineHeight = settings.lineHeight;
+    // }
+    // if (fontFamily) {
+    //   displayOptions.fontFamily = fontFamily;
+    // }
+    // console.log(`[デバッグ] 表示オプション:`, displayOptions);
+    // session.layouts.showTextWall(displayText, displayOptions);
+    // session.layouts.showTextWall(displayText, {
+    //   ...displayOptions,
+    //   view: ViewType.DASHBOARD
+    // });
+
+    // 現在は基本的な表示のみ（フォント設定なし）
     session.layouts.showTextWall(displayText, {
       view: ViewType.MAIN
     });
@@ -337,24 +486,12 @@ class ExampleMentraOSApp extends AppServer {
     );
     
     if (hasMediaRoute) {
-      console.log('[デバッグ] メディアコントローラーAPIエンドポイントは既に設定済みです');
+      this.debugLog('メディアコントローラーAPIエンドポイントは既に設定済みです');
       return;
     }
 
     // Webview認証ミドルウェアを適用
-    // package.jsonのexportsに定義されていないため、絶対パスで直接読み込む
-    const path = require('path');
-    const webviewPath = path.join(__dirname, '../node_modules/@mentra/sdk/dist/app/webview/index.js');
-    const { createAuthMiddleware } = require(webviewPath);
-    app.use('/api/media', createAuthMiddleware({
-      apiKey: MENTRAOS_API_KEY,
-      packageName: PACKAGE_NAME,
-      cookieSecret: COOKIE_SECRET,
-      getAppSessionForUser: (userId: string) => {
-        const sessionId = this.userIdToSessionId.get(userId);
-        return sessionId ? this.sessions.get(sessionId) || null : null;
-      }
-    }));
+    app.use('/api/media', this.createAuthMiddlewareForPath('/api/media'));
 
     // 対応しているメディアイベント一覧を取得するエンドポイント
     app.get('/api/media/events', (req: any, res: any) => {
@@ -412,30 +549,22 @@ class ExampleMentraOSApp extends AppServer {
     });
 
     // メディアコントローラーイベントを受け取るエンドポイント
-    // iOSアプリ側から、Bluetoothコントローラーのイベントを送信する
     app.post('/api/media/event', async (req: any, res: any) => {
       try {
-        console.log('[デバッグ] /api/media/event リクエスト受信');
-        console.log('[デバッグ] req.body:', JSON.stringify(req.body));
-        console.log('[デバッグ] req.authUserId:', (req as any).authUserId);
+        this.debugLog('/api/media/event リクエスト受信', { body: req.body, authUserId: (req as any).authUserId });
         
-        // 認証されたユーザーIDを取得
         const userId = (req as any).authUserId;
-        
-        // 認証されていない場合は、セッションIDを直接受け取ることも可能
         let sessionId: string | undefined;
         let session: AppSession | undefined;
 
         if (userId) {
-          // Webview認証が成功した場合
-          console.log('[デバッグ] Webview認証成功: userId=', userId);
+          this.debugLog('Webview認証成功: userId=', userId);
           sessionId = this.userIdToSessionId.get(userId);
           if (sessionId) {
             session = this.sessions.get(sessionId);
           }
         } else {
-          // iOSアプリ側から直接送信する場合（セッションIDを直接受け取る）
-          console.log('[デバッグ] Webview認証なし、セッションIDから検索');
+          this.debugLog('Webview認証なし、セッションIDから検索');
           sessionId = req.body.sessionId || req.query.sessionId;
           if (sessionId) {
             session = this.sessions.get(sessionId);
@@ -443,20 +572,18 @@ class ExampleMentraOSApp extends AppServer {
         }
 
         if (!session) {
-          console.error('[デバッグ] セッションが見つかりません。userId:', userId, 'sessionId:', sessionId);
-          console.error('[デバッグ] 利用可能なセッション:', Array.from(this.sessions.keys()));
+          this.debugError('セッションが見つかりません', { userId, sessionId, availableSessions: Array.from(this.sessions.keys()) });
           return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
         }
 
-        // メディアイベントタイプを取得
         const eventType = req.body.eventType || req.body.event;
         
         if (!eventType) {
-          console.error('[デバッグ] eventTypeが指定されていません');
+          this.debugError('eventTypeが指定されていません');
           return res.status(400).json({ success: false, error: 'eventTypeが必要です' });
         }
 
-        console.log('[デバッグ] メディアイベント処理開始: eventType=', eventType);
+        this.debugLog('メディアイベント処理開始: eventType=', eventType);
 
         // メディアイベントに応じて処理
         await this.handleMediaEvent(session, eventType, req.body);
@@ -481,9 +608,7 @@ class ExampleMentraOSApp extends AppServer {
           pageInfo
         });
       } catch (error: any) {
-        console.error('[デバッグ] /api/media/event エラー:', error);
-        console.error('[デバッグ] エラーメッセージ:', error.message);
-        console.error('[デバッグ] エラースタック:', error.stack);
+        console.error('[エラー] /api/media/event エラー:', error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -492,9 +617,9 @@ class ExampleMentraOSApp extends AppServer {
   // メディアイベントを処理（ページング処理はサーバー側で実行）
   private async handleMediaEvent(session: AppSession, eventType: string, data: any): Promise<void> {
     const eventTypeLower = eventType.toLowerCase().trim();
-    console.log(`[デバッグ] メディアイベント受信: ${eventType} (${eventTypeLower})`);
+    this.debugLog(`メディアイベント受信: ${eventType} (${eventTypeLower})`);
 
-    // セッションIDを取得（dataから直接取得するか、sessionsマップから逆引き）
+    // セッションIDを取得
     let sessionId: string | undefined;
     for (const [id, s] of this.sessions.entries()) {
       if (s === session) {
@@ -504,23 +629,17 @@ class ExampleMentraOSApp extends AppServer {
     }
 
     if (!sessionId) {
-      console.error('[デバッグ] セッションIDが見つかりません');
+      this.debugError('セッションIDが見つかりません');
       return;
     }
 
-    console.log(`[デバッグ] セッションID取得: ${sessionId}`);
-    console.log(`[デバッグ] イベントタイプチェック: eventTypeLower="${eventTypeLower}", nextpage一致=${eventTypeLower === 'nextpage'}, prevpage一致=${eventTypeLower === 'prevpage'}`);
-
     // nextpage/prevpageの場合はページング処理
     if (eventTypeLower === 'nextpage' || eventTypeLower === 'prevpage') {
-      console.log(`[デバッグ] ページング処理開始: eventType=${eventTypeLower}`);
+      this.debugLog(`ページング処理開始: eventType=${eventTypeLower}`);
       const pager = this.sessionPagers.get(sessionId);
-      console.log(`[デバッグ] TextPager取得: ${pager ? '見つかりました' : '見つかりません'}`);
       
       if (!pager) {
-        console.error('[デバッグ] TextPagerが見つかりません。テキストがアップロードされていない可能性があります。');
-        console.error(`[デバッグ] 現在のsessionPagersキー: ${Array.from(this.sessionPagers.keys()).join(', ')}`);
-        // エラーメッセージを表示
+        this.debugError('TextPagerが見つかりません', { sessionPagersKeys: Array.from(this.sessionPagers.keys()) });
         session.layouts.showTextWall('テキストがアップロードされていません', {
           view: ViewType.MAIN,
           durationMs: 3000
@@ -530,11 +649,8 @@ class ExampleMentraOSApp extends AppServer {
 
       let moved = false;
       if (eventTypeLower === 'nextpage') {
-        console.log(`[デバッグ] 次へボタン処理: 現在のページ=${pager.getCurrentPageNumber()}/${pager.getTotalPages()}`);
         moved = pager.nextPage();
-        console.log(`[デバッグ] 次へボタン結果: moved=${moved}, 新しいページ=${pager.getCurrentPageNumber()}/${pager.getTotalPages()}`);
         if (!moved) {
-          console.log('[デバッグ] 最後のページです');
           session.layouts.showTextWall('最後のページです', {
             view: ViewType.MAIN,
             durationMs: 2000
@@ -542,11 +658,8 @@ class ExampleMentraOSApp extends AppServer {
           return;
         }
       } else if (eventTypeLower === 'prevpage') {
-        console.log(`[デバッグ] 前へボタン処理: 現在のページ=${pager.getCurrentPageNumber()}/${pager.getTotalPages()}`);
         moved = pager.prevPage();
-        console.log(`[デバッグ] 前へボタン結果: moved=${moved}, 新しいページ=${pager.getCurrentPageNumber()}/${pager.getTotalPages()}`);
         if (!moved) {
-          console.log('[デバッグ] 最初のページです');
           session.layouts.showTextWall('最初のページです', {
             view: ViewType.MAIN,
             durationMs: 2000
@@ -555,10 +668,7 @@ class ExampleMentraOSApp extends AppServer {
         }
       }
 
-      // 現在のページを表示
-      console.log(`[デバッグ] ページ表示処理開始`);
       await this.displayCurrentPage(session, sessionId);
-      console.log(`[デバッグ] ページ表示処理完了`);
       return;
     }
 
@@ -573,7 +683,7 @@ class ExampleMentraOSApp extends AppServer {
     };
 
     const message = eventMessages[eventTypeLower] || `${eventType}ボタンが押されました`;
-    console.log(`[メディアイベント] ${eventType}: ${message} (ページング処理以外のイベント)`);
+    this.debugLog(`[メディアイベント] ${eventType}: ${message}`);
 
     // ARグラスに表示
     session.layouts.showTextWall(message, {
@@ -585,6 +695,169 @@ class ExampleMentraOSApp extends AppServer {
     session.layouts.showTextWall(message, {
       view: ViewType.DASHBOARD,
       durationMs: 5000
+    });
+  }
+
+  // 音声プレーヤー用のAPIエンドポイントを設定
+  private setupAudioAPI(): void {
+    const app = this.getExpressApp();
+    
+    // Webview認証ミドルウェアを適用
+    app.use('/api/audio', this.createAuthMiddlewareForPath('/api/audio'));
+
+    // 音声ファイル一覧を取得
+    app.get('/api/audio/files', (req: any, res: any) => {
+      try {
+        if (!AUDIO_SOURCE_DIR || !fs.existsSync(AUDIO_SOURCE_DIR)) {
+          this.debugLog('AUDIO_SOURCE_DIRが設定されていません、またはディレクトリが存在しません');
+          return res.json({ success: true, files: [] });
+        }
+
+        const files = fs.readdirSync(AUDIO_SOURCE_DIR);
+        const audioFiles: Array<{ id: string; name: string }> = [];
+
+        for (const file of files) {
+          if (file.toLowerCase().endsWith('.wav')) {
+            const baseName = path.basename(file, '.wav');
+            const srtPath = path.join(AUDIO_SOURCE_DIR, `${baseName}.srt`);
+            
+            // 対応するSRTファイルが存在する場合のみ追加
+            if (fs.existsSync(srtPath)) {
+              audioFiles.push({
+                id: baseName,
+                name: file
+              });
+            }
+          }
+        }
+
+        this.debugLog(`音声ファイル一覧取得: ${audioFiles.length}件`);
+        res.json({ success: true, files: audioFiles });
+      } catch (error: any) {
+        console.error('[エラー] 音声ファイル一覧取得エラー:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // HTTP Range対応の音声ストリーミング
+    app.get('/api/audio/stream/:id', (req: any, res: any) => {
+      try {
+        if (!AUDIO_SOURCE_DIR) {
+          return res.status(404).json({ success: false, error: 'AUDIO_SOURCE_DIRが設定されていません' });
+        }
+
+        const audioId = req.params.id;
+        const audioPath = path.join(AUDIO_SOURCE_DIR, `${audioId}.wav`);
+
+        if (!fs.existsSync(audioPath)) {
+          return res.status(404).json({ success: false, error: '音声ファイルが見つかりません' });
+        }
+
+        const stat = fs.statSync(audioPath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+
+        if (range) {
+          // HTTP Rangeリクエストの処理
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+          const chunksize = (end - start) + 1;
+          const file = fs.createReadStream(audioPath, { start, end });
+          const head = {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': 'audio/wav',
+          };
+
+          res.writeHead(206, head);
+          file.pipe(res);
+        } else {
+          // 通常のリクエスト（全ファイルを返す）
+          const head = {
+            'Content-Length': fileSize,
+            'Content-Type': 'audio/wav',
+          };
+          res.writeHead(200, head);
+          fs.createReadStream(audioPath).pipe(res);
+        }
+      } catch (error: any) {
+        console.error('[エラー] 音声ストリーミングエラー:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 字幕データを取得
+    app.get('/api/audio/subtitles/:id', (req: any, res: any) => {
+      try {
+        if (!AUDIO_SOURCE_DIR) {
+          return res.status(404).json({ success: false, error: 'AUDIO_SOURCE_DIRが設定されていません' });
+        }
+
+        const audioId = req.params.id;
+        const srtPath = path.join(AUDIO_SOURCE_DIR, `${audioId}.srt`);
+
+        if (!fs.existsSync(srtPath)) {
+          return res.status(404).json({ success: false, error: '字幕ファイルが見つかりません' });
+        }
+
+        // キャッシュを確認
+        if (this.subtitleCache.has(audioId)) {
+          const subtitles = this.subtitleCache.get(audioId)!;
+          this.debugLog(`字幕データ取得（キャッシュ）: ${audioId}, ${subtitles.length}件`);
+          return res.json({ success: true, subtitles });
+        }
+
+        // SRTファイルを読み込んでパース
+        const srtContent = fs.readFileSync(srtPath, 'utf-8');
+        const subtitles = SRTParser.parse(srtContent);
+        
+        // キャッシュに保存
+        this.subtitleCache.set(audioId, subtitles);
+        
+        this.debugLog(`字幕データ取得: ${audioId}, ${subtitles.length}件`);
+        res.json({ success: true, subtitles });
+      } catch (error: any) {
+        console.error('[エラー] 字幕データ取得エラー:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 音声再生状態を更新（ARグラスに字幕を表示）
+    app.post('/api/audio/state', async (req: any, res: any) => {
+      try {
+        const userId = (req as any).authUserId;
+        
+        if (!userId) {
+          return res.status(401).json({ success: false, error: '認証が必要です' });
+        }
+
+        const sessionId = this.userIdToSessionId.get(userId);
+        if (!sessionId) {
+          return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+        }
+
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+          return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+        }
+
+        const { subtitleText } = req.body;
+
+        if (subtitleText && subtitleText.trim()) {
+          const cleanText = subtitleText.trim();
+          session.layouts.showTextWall(cleanText, {
+            view: ViewType.MAIN
+          });
+          this.debugLog(`字幕をARグラスに表示: ${cleanText.substring(0, 50)}...`);
+        }
+
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error('[エラー] 音声状態更新エラー:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
   }
 }

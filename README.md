@@ -48,11 +48,13 @@ MentraOS install links: [mentra.glass/install](https://mentra.glass/install)
      COOKIE_SECRET=your-secret-key-change-this-in-production
      SERVER_URL=https://your-server-url.com
      WEBVIEW_URL=https://your-server-url.com/webview/
+     AUDIO_SOURCE_DIR=/path/to/audio/files
      ```
    * Make sure the `PACKAGE_NAME` matches what you registered in the MentraOS Console
    * Get your `API_KEY` from the MentraOS Developer Console
    * Set `SERVER_URL` to your public server URL (e.g., your ngrok URL)
    * Set `WEBVIEW_URL` to your webview URL (defaults to `${SERVER_URL}/webview/` if not set)
+   * Set `AUDIO_SOURCE_DIR` to the directory containing `.wav` files and their corresponding `.srt` subtitle files (optional, for audio player mode)
 
 6. Run your app with `bun run dev`
 

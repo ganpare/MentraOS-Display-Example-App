@@ -1,0 +1,22 @@
+音声プレーヤー機能の追加とコードリファクタリング
+
+主な変更内容:
+- トップページを追加し、テキストリーダーと音声プレーヤーモードを切り替え可能に
+- 音声プレーヤー機能を実装:
+  * サーバー側の音声ファイル一覧API (GET /api/audio/files)
+  * HTTP Range対応の音声ストリーミングAPI (GET /api/audio/stream/:id)
+  * SRT字幕パーサーと字幕取得API (GET /api/audio/subtitles/:id)
+  * 音声再生状態管理API (POST /api/audio/state) でARグラスに字幕表示
+- Webviewに音声プレーヤーUIを実装:
+  * 音声ファイル選択
+  * HTML5 Audioによる再生
+  * 再生/一時停止、10秒進む/戻る、次字幕/前字幕/リピートボタン
+  * 字幕の自動同期表示
+- コードリファクタリング:
+  * 認証ミドルウェア設定を共通化 (createAuthMiddlewareForPath)
+  * デバッグログを環境変数DEBUGで制御可能に
+  * デバッグログヘルパーメソッド追加 (debugLog, debugError)
+  * 重複コードの削減とコードの簡潔化
+- README.mdにAUDIO_SOURCE_DIR環境変数の説明を追加
+- セッション管理のデバッグログを改善
+

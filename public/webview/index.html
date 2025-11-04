@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>テキストファイル選択</title>
+    <title>MentraOS App</title>
     <style>
         * {
             margin: 0;
@@ -37,6 +37,55 @@
             font-size: 24px;
         }
         
+        .page {
+            display: none;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        .back-btn {
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        
+        /* トップページスタイル */
+        .top-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .menu-btn {
+            padding: 20px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .menu-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* テキストリーダーページスタイル */
         .file-input-wrapper {
             margin-bottom: 20px;
         }
@@ -135,44 +184,231 @@
             font-size: 14px;
             color: #666;
         }
+        
+        .navigation-area {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .navigation-area.show {
+            display: block;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nav-buttons button {
+            flex: 1;
+        }
+        
+        .nav-buttons .prev-btn {
+            background: #6c757d;
+        }
+        
+        .nav-buttons .next-btn {
+            background: #667eea;
+        }
+        
+        .page-info {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* 音声プレーヤーページスタイル */
+        .audio-file-list {
+            margin-bottom: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .audio-file-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .audio-file-item:hover {
+            background: #e9ecef;
+        }
+        
+        .audio-file-item.selected {
+            background: #667eea;
+            color: white;
+        }
+        
+        .audio-player {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .audio-player.active {
+            display: block;
+        }
+        
+        .audio-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .audio-controls button {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px;
+            font-size: 14px;
+        }
+        
+        .audio-controls .play-btn {
+            background: #28a745;
+        }
+        
+        .audio-controls .pause-btn {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .audio-controls .skip-btn {
+            background: #17a2b8;
+        }
+        
+        .audio-controls .subtitle-btn {
+            background: #6f42c1;
+        }
+        
+        .subtitle-display {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            min-height: 60px;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .current-time {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
+    <!-- トップページ -->
     <div class="container">
-        <h1>📄 テキストファイル選択</h1>
-        
-        <div class="file-input-wrapper">
-            <label for="fileInput" class="file-input-label">
-                📁 ファイルを選択
-            </label>
-            <input type="file" id="fileInput" accept=".txt,.text,.md,.markdown" />
-        </div>
-        
-        <div class="text-input-wrapper">
-            <textarea id="textInput" placeholder="または、ここにテキストを直接入力してください..."></textarea>
-        </div>
-        
-        <button id="displayBtn">ARグラスに表示</button>
-        
-        <!-- ナビゲーションボタンエリア（テキスト表示後に表示） -->
-        <div id="navigationArea" style="display: none; margin-top: 20px;">
-            <div style="display: flex; gap: 10px;">
-                <button id="prevBtn" style="flex: 1; background: #6c757d;">← 前へ</button>
-                <button id="nextBtn" style="flex: 1; background: #667eea;">次へ →</button>
+        <div id="topPage" class="page active">
+            <h1>🏠 メインメニュー</h1>
+            <div class="top-menu">
+                <button class="menu-btn" id="textReaderBtn">📄 テキストリーダー</button>
+                <button class="menu-btn" id="audioPlayerBtn">🎵 音声プレーヤー</button>
             </div>
-            <div id="pageInfo" style="text-align: center; margin-top: 10px; color: #666; font-size: 14px;"></div>
         </div>
         
-        <div id="status" class="status"></div>
-        <div id="fileInfo" class="file-info" style="display: none;"></div>
+        <!-- テキストリーダーページ -->
+        <div id="textReaderPage" class="page">
+            <button class="back-btn" id="backToTopBtn">← 戻る</button>
+            <h1>📄 テキストファイル選択</h1>
+            
+            <div class="file-input-wrapper">
+                <label for="fileInput" class="file-input-label">
+                    📁 ファイルを選択
+                </label>
+                <input type="file" id="fileInput" accept=".txt,.text,.md,.markdown" />
+            </div>
+            
+            <div class="text-input-wrapper">
+                <textarea id="textInput" placeholder="または、ここにテキストを直接入力してください..."></textarea>
+            </div>
+            
+            <button id="displayBtn">ARグラスに表示</button>
+            
+            <div id="navigationArea" class="navigation-area">
+                <div class="nav-buttons">
+                    <button id="prevBtn" class="prev-btn">← 前へ</button>
+                    <button id="nextBtn" class="next-btn">次へ →</button>
+                </div>
+                <div id="pageInfo" class="page-info"></div>
+            </div>
+            
+            <div id="status" class="status"></div>
+            <div id="fileInfo" class="file-info" style="display: none;"></div>
+        </div>
+        
+        <!-- 音声プレーヤーページ -->
+        <div id="audioPlayerPage" class="page">
+            <button class="back-btn" id="backToTopBtn2">← 戻る</button>
+            <h1>🎵 音声プレーヤー</h1>
+            
+            <div class="audio-file-list" id="audioFileList">
+                <div style="text-align: center; color: #666; padding: 20px;">
+                    ファイルを読み込み中...
+                </div>
+            </div>
+            
+            <div class="audio-player" id="audioPlayer">
+                <audio id="audioElement" controls style="width: 100%;"></audio>
+                <div class="current-time" id="currentTime">00:00 / 00:00</div>
+                
+                <div class="audio-controls">
+                    <button id="playBtn" class="play-btn">▶️ 再生</button>
+                    <button id="pauseBtn" class="pause-btn">⏸️ 一時停止</button>
+                    <button id="skipForwardBtn" class="skip-btn">⏩ +10秒</button>
+                    <button id="skipBackwardBtn" class="skip-btn">⏪ -10秒</button>
+                    <button id="nextSubtitleBtn" class="subtitle-btn">⏭️ 次字幕</button>
+                    <button id="prevSubtitleBtn" class="subtitle-btn">⏮️ 前字幕</button>
+                    <button id="repeatSubtitleBtn" class="subtitle-btn">🔁 リピート</button>
+                </div>
+                
+                <div class="subtitle-display" id="subtitleDisplay">
+                    字幕がここに表示されます
+                </div>
+            </div>
+            
+            <div id="audioStatus" class="status"></div>
+        </div>
     </div>
 
     <script>
         // APIのベースURL
-        // MentraOSアプリのWebview内では、window.location.originが正しく取得できないため、
-        // 空文字列にして相対パスとして動作させる（現在のページのオリジンが自動的に使用される）
         const apiBaseUrl = '';
-
+        
+        // ページ管理
+        const pages = {
+            top: document.getElementById('topPage'),
+            textReader: document.getElementById('textReaderPage'),
+            audioPlayer: document.getElementById('audioPlayerPage')
+        };
+        
+        function showPage(pageName) {
+            Object.values(pages).forEach(page => page.classList.remove('active'));
+            pages[pageName].classList.add('active');
+        }
+        
+        // トップページナビゲーション
+        document.getElementById('textReaderBtn').addEventListener('click', () => showPage('textReader'));
+        document.getElementById('audioPlayerBtn').addEventListener('click', () => {
+            showPage('audioPlayer');
+            loadAudioFiles();
+        });
+        document.getElementById('backToTopBtn').addEventListener('click', () => showPage('top'));
+        document.getElementById('backToTopBtn2').addEventListener('click', () => showPage('top'));
+        
+        // ========== テキストリーダー機能 ==========
         const fileInput = document.getElementById('fileInput');
         const textInput = document.getElementById('textInput');
         const displayBtn = document.getElementById('displayBtn');
@@ -182,22 +418,18 @@
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const pageInfoEl = document.getElementById('pageInfo');
-
+        
         let selectedFile = null;
-        let currentPageInfo = null; // サーバー側から取得したページ情報を保持
-
-        // ファイル選択
+        let currentPageInfo = null;
+        
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
-            selectedFile = file;
             
-            // ファイル情報を表示
+            selectedFile = file;
             fileInfoEl.textContent = `選択されたファイル: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
             fileInfoEl.style.display = 'block';
-
-            // テキストファイルを読み込んでtextareaに表示
+            
             if (file.type === 'text/plain' || 
                 file.type === 'text/markdown' || 
                 file.name.endsWith('.txt') || 
@@ -213,7 +445,6 @@
                     const textContent = e.target.result;
                     textInput.value = textContent;
                     
-                    // ファイル選択時に即座にサーバーに送信
                     try {
                         statusEl.textContent = 'サーバーに送信中...';
                         statusEl.className = 'status';
@@ -221,22 +452,10 @@
                         const formData = new FormData();
                         formData.append('file', file);
                         
-                        console.log('[デバッグ] ファイル選択時にサーバーに送信:', {
-                            fileName: file.name,
-                            fileSize: file.size,
-                            apiUrl: `${apiBaseUrl}/api/upload-text`
-                        });
-                        
                         const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
                             method: 'POST',
                             credentials: 'include',
                             body: formData
-                        });
-                        
-                        console.log('[デバッグ] ファイルアップロードレスポンス:', {
-                            status: response.status,
-                            statusText: response.statusText,
-                            ok: response.ok
                         });
                         
                         if (!response.ok) {
@@ -247,24 +466,21 @@
                             } catch (e) {
                                 errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
                             }
-                            console.error('Upload error:', errorData);
                             statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
                             statusEl.className = 'status error';
                             return;
                         }
                         
                         const data = await response.json();
-                        console.log('[デバッグ] ファイルアップロード成功:', data);
                         
                         if (data.success) {
-                            // サーバー側でページング処理が完了し、最初のページが表示された
                             currentPageInfo = {
                                 currentPage: data.currentPage,
                                 totalPages: data.totalPages,
                                 pageInfo: `${data.currentPage}/${data.totalPages}`
                             };
                             updatePageInfo();
-                            navigationArea.style.display = 'block';
+                            navigationArea.classList.add('show');
                             
                             statusEl.textContent = `✅ ファイルを読み込みました。ページ ${currentPageInfo.pageInfo} を表示しました。`;
                             statusEl.className = 'status success';
@@ -273,7 +489,6 @@
                             statusEl.className = 'status error';
                         }
                     } catch (error) {
-                        console.error('Upload error:', error);
                         statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
                         statusEl.className = 'status error';
                     }
@@ -284,8 +499,7 @@
                 statusEl.className = 'status error';
             }
         });
-
-        // 表示ボタン
+        
         displayBtn.addEventListener('click', async () => {
             const text = textInput.value.trim();
             
@@ -294,12 +508,11 @@
                 statusEl.className = 'status error';
                 return;
             }
-
-            // テキスト入力から直接の場合は、サーバーに送信
+            
             displayBtn.disabled = true;
             statusEl.textContent = '送信中...';
             statusEl.className = 'status';
-
+            
             try {
                 const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
                     method: 'POST',
@@ -307,11 +520,9 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        text: text
-                    })
+                    body: JSON.stringify({ text: text })
                 });
-
+                
                 if (!response.ok) {
                     const errorText = await response.text();
                     let errorData;
@@ -320,52 +531,45 @@
                     } catch (e) {
                         errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
                     }
-                    console.error('Upload error:', errorData);
                     statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
                     statusEl.className = 'status error';
                     displayBtn.disabled = false;
                     return;
                 }
-
+                
                 const data = await response.json();
-                console.log('[デバッグ] /api/upload-text レスポンス:', data);
                 
                 if (!data.success) {
-                    console.error('Upload error:', data.error);
                     statusEl.textContent = '❌ エラー: ' + data.error;
                     statusEl.className = 'status error';
                     displayBtn.disabled = false;
                     return;
                 }
                 
-                // サーバー側でページング処理が完了し、最初のページが表示された
                 currentPageInfo = {
                     currentPage: data.currentPage,
                     totalPages: data.totalPages,
                     pageInfo: `${data.currentPage}/${data.totalPages}`
                 };
                 updatePageInfo();
-                navigationArea.style.display = 'block';
+                navigationArea.classList.add('show');
                 
                 statusEl.textContent = `✅ ARグラスに表示しました！ページ ${currentPageInfo.pageInfo}`;
                 statusEl.className = 'status success';
             } catch (error) {
-                console.error('Upload error:', error);
                 statusEl.textContent = '❌ 通信エラー: ' + error.message;
                 statusEl.className = 'status error';
             } finally {
                 displayBtn.disabled = false;
             }
         });
-
-        // ページ情報を更新
+        
         function updatePageInfo() {
             if (currentPageInfo) {
                 pageInfoEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
             }
         }
-
-        // 前へボタン
+        
         prevBtn.addEventListener('click', async () => {
             if (!currentPageInfo) return;
             
@@ -380,11 +584,9 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        eventType: 'prevpage'
-                    })
+                    body: JSON.stringify({ eventType: 'prevpage' })
                 });
-
+                
                 if (!response.ok) {
                     const errorText = await response.text();
                     let errorData;
@@ -393,15 +595,13 @@
                     } catch (e) {
                         errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
                     }
-                    console.error('Media event error:', errorData);
                     statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
                     statusEl.className = 'status error';
                     prevBtn.disabled = false;
                     return;
                 }
-
+                
                 const data = await response.json();
-                console.log('[デバッグ] /api/media/event (prevpage) レスポンス:', data);
                 
                 if (data.success && data.pageInfo) {
                     currentPageInfo = {
@@ -420,15 +620,13 @@
                     statusEl.className = 'status error';
                 }
             } catch (error) {
-                console.error('Media event error:', error);
                 statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
                 statusEl.className = 'status error';
             } finally {
                 prevBtn.disabled = false;
             }
         });
-
-        // 次へボタン
+        
         nextBtn.addEventListener('click', async () => {
             if (!currentPageInfo) return;
             
@@ -443,11 +641,9 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        eventType: 'nextpage'
-                    })
+                    body: JSON.stringify({ eventType: 'nextpage' })
                 });
-
+                
                 if (!response.ok) {
                     const errorText = await response.text();
                     let errorData;
@@ -456,15 +652,13 @@
                     } catch (e) {
                         errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
                     }
-                    console.error('Media event error:', errorData);
                     statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
                     statusEl.className = 'status error';
                     nextBtn.disabled = false;
                     return;
                 }
-
+                
                 const data = await response.json();
-                console.log('[デバッグ] /api/media/event (nextpage) レスポンス:', data);
                 
                 if (data.success && data.pageInfo) {
                     currentPageInfo = {
@@ -483,14 +677,261 @@
                     statusEl.className = 'status error';
                 }
             } catch (error) {
-                console.error('Media event error:', error);
                 statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
                 statusEl.className = 'status error';
             } finally {
                 nextBtn.disabled = false;
             }
         });
+        
+        // ========== 音声プレーヤー機能 ==========
+        const audioFileList = document.getElementById('audioFileList');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const audioElement = document.getElementById('audioElement');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const skipForwardBtn = document.getElementById('skipForwardBtn');
+        const skipBackwardBtn = document.getElementById('skipBackwardBtn');
+        const nextSubtitleBtn = document.getElementById('nextSubtitleBtn');
+        const prevSubtitleBtn = document.getElementById('prevSubtitleBtn');
+        const repeatSubtitleBtn = document.getElementById('repeatSubtitleBtn');
+        const subtitleDisplay = document.getElementById('subtitleDisplay');
+        const currentTimeEl = document.getElementById('currentTime');
+        const audioStatusEl = document.getElementById('audioStatus');
+        
+        let selectedAudioFile = null;
+        let subtitles = [];
+        let currentSubtitleIndex = -1;
+        let subtitleUpdateInterval = null;
+        let audioEventListenersAttached = false;
+        
+        async function loadAudioFiles() {
+            try {
+                audioFileList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">ファイルを読み込み中...</div>';
+                
+                const response = await fetch(`${apiBaseUrl}/api/audio/files`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.success || !data.files || data.files.length === 0) {
+                    audioFileList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">音声ファイルが見つかりません</div>';
+                    return;
+                }
+                
+                audioFileList.innerHTML = '';
+                data.files.forEach(file => {
+                    const item = document.createElement('div');
+                    item.className = 'audio-file-item';
+                    item.textContent = file.name;
+                    item.addEventListener('click', () => selectAudioFile(file, item));
+                    audioFileList.appendChild(item);
+                });
+            } catch (error) {
+                audioFileList.innerHTML = `<div style="text-align: center; color: #f00; padding: 20px;">エラー: ${error.message}</div>`;
+                console.error('Audio files load error:', error);
+            }
+        }
+        
+        async function selectAudioFile(file, itemElement) {
+            // 選択状態を更新
+            document.querySelectorAll('.audio-file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            itemElement.classList.add('selected');
+            
+            selectedAudioFile = file;
+            
+            // 音声ファイルを読み込み
+            audioElement.src = `${apiBaseUrl}/api/audio/stream/${file.id}`;
+            
+            // 字幕を読み込み
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/audio/subtitles/${file.id}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.subtitles) {
+                    subtitles = data.subtitles;
+                    currentSubtitleIndex = -1;
+                    subtitleDisplay.textContent = '字幕が読み込まれました';
+                    audioPlayer.classList.add('active');
+                } else {
+                    throw new Error('字幕データの取得に失敗しました');
+                }
+            } catch (error) {
+                audioStatusEl.textContent = `❌ 字幕読み込みエラー: ${error.message}`;
+                audioStatusEl.className = 'status error';
+                console.error('Subtitle load error:', error);
+            }
+            
+            // 再生位置更新と字幕同期（イベントリスナーは一度だけ登録）
+            if (!audioEventListenersAttached) {
+                audioElement.addEventListener('loadedmetadata', () => {
+                    updateCurrentTime();
+                });
+                
+                audioElement.addEventListener('timeupdate', () => {
+                    updateCurrentTime();
+                    updateSubtitleDisplay();
+                });
+                
+                audioElement.addEventListener('play', () => {
+                    startSubtitleSync();
+                });
+                
+                audioElement.addEventListener('pause', () => {
+                    stopSubtitleSync();
+                });
+                
+                audioElement.addEventListener('ended', () => {
+                    stopSubtitleSync();
+                });
+                
+                audioEventListenersAttached = true;
+            }
+        }
+        
+        function updateCurrentTime() {
+            const current = audioElement.currentTime;
+            const duration = audioElement.duration;
+            
+            if (isNaN(duration)) return;
+            
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+            
+            currentTimeEl.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
+        }
+        
+        function updateSubtitleDisplay() {
+            if (subtitles.length === 0) return;
+            
+            const currentTime = audioElement.currentTime;
+            
+            // 現在時刻に該当する字幕を検索
+            let foundIndex = -1;
+            for (let i = 0; i < subtitles.length; i++) {
+                const subtitle = subtitles[i];
+                if (currentTime >= subtitle.startTime && currentTime <= subtitle.endTime) {
+                    foundIndex = i;
+                    break;
+                }
+            }
+            
+            if (foundIndex !== currentSubtitleIndex) {
+                currentSubtitleIndex = foundIndex;
+                
+                if (foundIndex >= 0) {
+                    subtitleDisplay.textContent = subtitles[foundIndex].text;
+                    // サーバーに字幕更新を通知
+                    updateSubtitleOnServer(subtitles[foundIndex].text);
+                } else {
+                    subtitleDisplay.textContent = '';
+                }
+            }
+        }
+        
+        function startSubtitleSync() {
+            if (subtitleUpdateInterval) return;
+            subtitleUpdateInterval = setInterval(() => {
+                updateSubtitleDisplay();
+            }, 100);
+        }
+        
+        function stopSubtitleSync() {
+            if (subtitleUpdateInterval) {
+                clearInterval(subtitleUpdateInterval);
+                subtitleUpdateInterval = null;
+            }
+        }
+        
+        async function updateSubtitleOnServer(text) {
+            try {
+                await fetch(`${apiBaseUrl}/api/audio/state`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        currentTime: audioElement.currentTime,
+                        subtitleText: text
+                    })
+                });
+            } catch (error) {
+                console.error('Subtitle update error:', error);
+            }
+        }
+        
+        playBtn.addEventListener('click', () => {
+            audioElement.play();
+        });
+        
+        pauseBtn.addEventListener('click', () => {
+            audioElement.pause();
+        });
+        
+        skipForwardBtn.addEventListener('click', () => {
+            audioElement.currentTime = Math.min(audioElement.currentTime + 10, audioElement.duration);
+        });
+        
+        skipBackwardBtn.addEventListener('click', () => {
+            audioElement.currentTime = Math.max(audioElement.currentTime - 10, 0);
+        });
+        
+        nextSubtitleBtn.addEventListener('click', () => {
+            if (subtitles.length === 0) return;
+            
+            let nextIndex = currentSubtitleIndex + 1;
+            if (nextIndex >= subtitles.length) {
+                nextIndex = subtitles.length - 1;
+            }
+            
+            const subtitle = subtitles[nextIndex];
+            audioElement.currentTime = subtitle.startTime;
+            currentSubtitleIndex = nextIndex;
+            subtitleDisplay.textContent = subtitle.text;
+            updateSubtitleOnServer(subtitle.text);
+        });
+        
+        prevSubtitleBtn.addEventListener('click', () => {
+            if (subtitles.length === 0) return;
+            
+            let prevIndex = currentSubtitleIndex - 1;
+            if (prevIndex < 0) {
+                prevIndex = 0;
+            }
+            
+            const subtitle = subtitles[prevIndex];
+            audioElement.currentTime = subtitle.startTime;
+            currentSubtitleIndex = prevIndex;
+            subtitleDisplay.textContent = subtitle.text;
+            updateSubtitleOnServer(subtitle.text);
+        });
+        
+        repeatSubtitleBtn.addEventListener('click', () => {
+            if (currentSubtitleIndex >= 0 && currentSubtitleIndex < subtitles.length) {
+                const subtitle = subtitles[currentSubtitleIndex];
+                audioElement.currentTime = subtitle.startTime;
+                subtitleDisplay.textContent = subtitle.text;
+                updateSubtitleOnServer(subtitle.text);
+            }
+        });
     </script>
 </body>
 </html>
-
