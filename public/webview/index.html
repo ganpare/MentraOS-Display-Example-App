@@ -169,7 +169,9 @@
 
     <script>
         // APIのベースURL
-        const apiBaseUrl = window.location.origin;
+        // MentraOSアプリのWebview内では、window.location.originが正しく取得できないため、
+        // 空文字列にして相対パスとして動作させる（現在のページのオリジンが自動的に使用される）
+        const apiBaseUrl = '';
 
         const fileInput = document.getElementById('fileInput');
         const textInput = document.getElementById('textInput');
@@ -298,9 +300,75 @@
                 file.name.endsWith('.txt') || 
                 file.name.endsWith('.md') || 
                 file.name.endsWith('.markdown')) {
+                
+                statusEl.textContent = 'ファイルを読み込み中...';
+                statusEl.className = 'status';
+                statusEl.style.display = 'block';
+                
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    textInput.value = e.target.result;
+                reader.onload = async (e) => {
+                    const textContent = e.target.result;
+                    textInput.value = textContent;
+                    
+                    // ファイル選択時に即座にサーバーに送信
+                    try {
+                        statusEl.textContent = 'サーバーに送信中...';
+                        statusEl.className = 'status';
+                        
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        
+                        console.log('[デバッグ] ファイル選択時にサーバーに送信:', {
+                            fileName: file.name,
+                            fileSize: file.size,
+                            apiUrl: `${apiBaseUrl}/api/upload-text`
+                        });
+                        
+                        const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
+                            method: 'POST',
+                            credentials: 'include',
+                            body: formData
+                        });
+                        
+                        console.log('[デバッグ] ファイルアップロードレスポンス:', {
+                            status: response.status,
+                            statusText: response.statusText,
+                            ok: response.ok
+                        });
+                        
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            let errorData;
+                            try {
+                                errorData = JSON.parse(errorText);
+                            } catch (e) {
+                                errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+                            }
+                            console.error('Upload error:', errorData);
+                            statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
+                            statusEl.className = 'status error';
+                            return;
+                        }
+                        
+                        const data = await response.json();
+                        console.log('[デバッグ] ファイルアップロード成功:', data);
+                        
+                        if (data.success) {
+                            // クライアント側でページングを初期化
+                            textPager = new TextPager(textContent);
+                            console.log('[デバッグ] TextPager初期化完了。ページ数:', textPager.getTotalPages());
+                            
+                            statusEl.textContent = '✅ ファイルを読み込みました。ARグラスに表示ボタンを押してください。';
+                            statusEl.className = 'status success';
+                        } else {
+                            statusEl.textContent = `❌ エラー: ${data.error}`;
+                            statusEl.className = 'status error';
+                        }
+                    } catch (error) {
+                        console.error('Upload error:', error);
+                        statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
+                        statusEl.className = 'status error';
+                    }
                 };
                 reader.readAsText(file);
             } else {
@@ -319,28 +387,18 @@
                 return;
             }
 
-            displayBtn.disabled = true;
-            statusEl.textContent = '送信中...';
-            statusEl.className = 'status';
+            // 既にTextPagerが初期化されている場合は、それを使用
+            // ファイルから読み込んだ場合は既に初期化済み
+            if (!textPager) {
+                // テキスト入力から直接の場合は、ここでサーバーに送信してから初期化
+                displayBtn.disabled = true;
+                statusEl.textContent = '送信中...';
+                statusEl.className = 'status';
 
-            try {
-                let response;
-                
-                if (selectedFile) {
-                    // ファイルをアップロード
-                    const formData = new FormData();
-                    formData.append('file', selectedFile);
-                    
-                    response = await fetch(`${apiBaseUrl}/api/upload-text`, {
+                try {
+                    const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
                         method: 'POST',
-                        credentials: 'include', // クッキーを送信
-                        body: formData
-                    });
-                } else {
-                    // テキストを直接送信
-                    response = await fetch(`${apiBaseUrl}/api/upload-text`, {
-                        method: 'POST',
-                        credentials: 'include', // クッキーを送信
+                        credentials: 'include',
                         headers: {
                             'Content-Type': 'application/json'
                         },
@@ -348,29 +406,61 @@
                             text: text
                         })
                     });
-                }
 
-                const data = await response.json();
-                
-                if (data.success) {
-                    // クライアント側でページングを初期化
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        let errorData;
+                        try {
+                            errorData = JSON.parse(errorText);
+                        } catch (e) {
+                            errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+                        }
+                        console.error('Upload error:', errorData);
+                        statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
+                        statusEl.className = 'status error';
+                        displayBtn.disabled = false;
+                        return;
+                    }
+
+                    const data = await response.json();
+                    console.log('[デバッグ] /api/upload-text レスポンス:', data);
+                    
+                    if (!data.success) {
+                        console.error('Upload error:', data.error);
+                        statusEl.textContent = '❌ エラー: ' + data.error;
+                        statusEl.className = 'status error';
+                        displayBtn.disabled = false;
+                        return;
+                    }
+                    
+                    // TextPagerを初期化
                     textPager = new TextPager(text);
-                    
-                    // 最初のページをARグラスに表示
-                    await displayCurrentPage();
-                    
-                    // ナビゲーションボタンを表示
-                    navigationArea.style.display = 'block';
-                    updatePageInfo();
-                    
-                    statusEl.textContent = '✅ ARグラスに表示しました！';
-                    statusEl.className = 'status success';
-                } else {
-                    statusEl.textContent = '❌ エラー: ' + data.error;
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    statusEl.textContent = '❌ 通信エラー: ' + error.message;
                     statusEl.className = 'status error';
+                    displayBtn.disabled = false;
+                    return;
                 }
+            }
+
+            // 最初のページをARグラスに表示
+            displayBtn.disabled = true;
+            statusEl.textContent = 'ARグラスに表示中...';
+            statusEl.className = 'status';
+            
+            try {
+                await displayCurrentPage();
+                
+                // ナビゲーションボタンを表示
+                navigationArea.style.display = 'block';
+                updatePageInfo();
+                
+                statusEl.textContent = '✅ ARグラスに表示しました！';
+                statusEl.className = 'status success';
             } catch (error) {
-                statusEl.textContent = '❌ 通信エラー: ' + error.message;
+                console.error('Display error:', error);
+                statusEl.textContent = `❌ 表示エラー: ${error.message || error}`;
                 statusEl.className = 'status error';
             } finally {
                 displayBtn.disabled = false;
@@ -381,14 +471,24 @@
         async function displayCurrentPage() {
             if (!textPager) {
                 console.error('TextPagerが初期化されていません');
+                statusEl.textContent = '❌ エラー: TextPagerが初期化されていません';
+                statusEl.className = 'status error';
                 return;
             }
 
             const pageText = textPager.getCurrentPage();
             const pageInfo = textPager.getPageInfo();
 
+            console.log('[デバッグ] displayCurrentPage呼び出し:', {
+                pageText: pageText ? pageText.substring(0, 50) + '...' : '空',
+                pageInfo: pageInfo,
+                pageTextLength: pageText ? pageText.length : 0
+            });
+
             if (!pageText) {
                 console.error('ページテキストが空です');
+                statusEl.textContent = '❌ エラー: ページテキストが空です';
+                statusEl.className = 'status error';
                 return;
             }
 
@@ -397,16 +497,28 @@
                 .replace(/[^\x20-\x7E\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\n]/g, '')
                 .trim();
 
+            console.log('[デバッグ] クリーンアップ後:', {
+                cleanTextLength: cleanText.length,
+                cleanTextPreview: cleanText.substring(0, 50) + '...'
+            });
+
             if (!cleanText) {
                 console.error('クリーンアップ後のテキストが空です');
+                statusEl.textContent = '❌ エラー: クリーンアップ後のテキストが空です';
+                statusEl.className = 'status error';
                 return;
             }
 
             // ARグラスにページテキストとページ情報を表示
             const displayText = `${cleanText}\n\n${pageInfo}`;
+            console.log('[デバッグ] 送信するテキスト:', {
+                displayTextLength: displayText.length,
+                displayTextPreview: displayText.substring(0, 100) + '...'
+            });
 
             try {
                 // サーバーに表示するテキストだけを送信
+                console.log('[デバッグ] /api/display-text にリクエスト送信');
                 const response = await fetch(`${apiBaseUrl}/api/display-text`, {
                     method: 'POST',
                     credentials: 'include',
@@ -416,12 +528,42 @@
                     body: JSON.stringify({ text: displayText })
                 });
 
+                console.log('[デバッグ] /api/display-text レスポンス受信:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok
+                });
+
+                // レスポンスステータスをチェック
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+                    }
+                    console.error('Display error:', errorData);
+                    statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
+                    statusEl.className = 'status error';
+                    throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
+                console.log('[デバッグ] /api/display-text レスポンスデータ:', data);
+                
                 if (!data.success) {
                     console.error('Display error:', data.error);
+                    statusEl.textContent = `❌ エラー: ${data.error}`;
+                    statusEl.className = 'status error';
+                } else {
+                    console.log('[デバッグ] テキスト表示成功');
                 }
             } catch (error) {
                 console.error('Display error:', error);
+                console.error('Display error stack:', error.stack);
+                statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
+                statusEl.className = 'status error';
             }
         }
 

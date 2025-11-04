@@ -25,6 +25,7 @@ class ExampleMentraOSApp extends AppServer {
       apiKey: MENTRAOS_API_KEY,
       port: PORT,
       publicDir: './public', // Webview用の静的ファイルをホスト
+      cookieSecret: COOKIE_SECRET, // Cookie署名用の秘密鍵を設定
     });
   }
 
@@ -99,32 +100,31 @@ class ExampleMentraOSApp extends AppServer {
 
     const multer = require('multer');
     const upload = multer({ storage: multer.memoryStorage() });
-    const cookieParser = require('cookie-parser');
-    
-    // cookie-parserは一度だけ設定
-    app.use(cookieParser());
 
-    // Webview認証ミドルウェアを適用
-    // package.jsonのexportsに定義されていないため、絶対パスで直接読み込む
-    const path = require('path');
-    const webviewPath = path.join(__dirname, '../node_modules/@mentra/sdk/dist/app/webview/index.js');
-    const { createAuthMiddleware } = require(webviewPath);
-    app.use('/api', createAuthMiddleware({
-      apiKey: MENTRAOS_API_KEY,
-      packageName: PACKAGE_NAME,
-      cookieSecret: COOKIE_SECRET,
-      getAppSessionForUser: (userId: string) => {
-        const sessionId = this.userIdToSessionId.get(userId);
-        return sessionId ? this.sessions.get(sessionId) || null : null;
-      }
-    }));
+    // 全てのリクエストをログに記録（デバッグ用）
+    app.use('/api', (req: any, res: any, next: any) => {
+      console.log(`[デバッグ] リクエスト受信: ${req.method} ${req.path}`);
+      console.log(`[デバッグ] リクエストヘッダー:`, {
+        'content-type': req.headers['content-type'],
+        'origin': req.headers['origin'],
+        'referer': req.headers['referer'],
+        'user-agent': req.headers['user-agent']
+      });
+      next();
+    });
+
+    // 注意: AppServerのコンストラクタで既にcookie-parserと認証ミドルウェアが設定されているため、
+    // ここでは重複して設定しない
 
     // テキストファイルをアップロードして表示
     app.post('/api/upload-text', upload.single('file'), async (req: any, res: any) => {
       try {
+        console.log('[デバッグ] /api/upload-text リクエスト受信');
         const userId = (req as any).authUserId;
+        console.log('[デバッグ] userId:', userId);
         
         if (!userId) {
+          console.error('[デバッグ] 認証エラー: userIdが見つかりません');
           return res.status(401).json({ success: false, error: '認証が必要です' });
         }
 
@@ -167,25 +167,36 @@ class ExampleMentraOSApp extends AppServer {
     // テキストをARグラスに表示するエンドポイント（クライアント側からページング済みテキストを受け取る）
     app.post('/api/display-text', async (req: any, res: any) => {
       try {
+        console.log('[デバッグ] /api/display-text リクエスト受信');
         const userId = (req as any).authUserId;
+        console.log('[デバッグ] userId:', userId);
         
         if (!userId) {
+          console.error('[デバッグ] 認証エラー: userIdが見つかりません');
           return res.status(401).json({ success: false, error: '認証が必要です' });
         }
 
         const sessionId = this.userIdToSessionId.get(userId);
+        console.log('[デバッグ] sessionId:', sessionId);
+        
         if (!sessionId) {
+          console.error('[デバッグ] セッションエラー: sessionIdが見つかりません. userId=', userId);
           return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
         }
 
         const session = this.sessions.get(sessionId);
+        console.log('[デバッグ] session:', session ? '見つかりました' : '見つかりません');
+        
         if (!session) {
+          console.error('[デバッグ] セッションエラー: sessionオブジェクトが見つかりません. sessionId=', sessionId);
           return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
         }
 
         const text = req.body.text;
+        console.log('[デバッグ] 受信テキスト長:', text ? text.length : 0);
 
         if (!text) {
+          console.error('[デバッグ] バリデーションエラー: テキストが空です');
           return res.status(400).json({ success: false, error: 'テキストが必要です' });
         }
 
@@ -194,7 +205,10 @@ class ExampleMentraOSApp extends AppServer {
           .replace(/[^\x20-\x7E\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\n]/g, '')
           .trim();
 
+        console.log('[デバッグ] クリーンアップ後のテキスト長:', cleanText.length);
+
         if (!cleanText) {
+          console.error('[デバッグ] バリデーションエラー: クリーンアップ後のテキストが空です');
           return res.status(400).json({ success: false, error: '有効なテキストが見つかりません' });
         }
 
@@ -208,10 +222,13 @@ class ExampleMentraOSApp extends AppServer {
           view: ViewType.DASHBOARD
         });
 
+        console.log('[デバッグ] テキスト表示成功');
         res.json({ success: true, message: 'テキストを表示しました' });
       } catch (error: any) {
         console.error('[デバッグ] /api/display-text エラー:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[デバッグ] エラーメッセージ:', error.message);
+        console.error('[デバッグ] エラースタック:', error.stack);
+        res.status(500).json({ success: false, error: error.message || '内部サーバーエラー' });
       }
     });
 
