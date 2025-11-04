@@ -161,6 +161,92 @@ class SRTParser {
   }
 }
 
+// マークダウンテキストを整形するクラス（プレーンテキストに変換）
+class MarkdownFormatter {
+  static format(text: string): string {
+    let formatted = text;
+    
+    // コードブロックをそのまま保持（```で囲まれた部分）
+    const codeBlocks: string[] = [];
+    formatted = formatted.replace(/```[\s\S]*?```/g, (match) => {
+      codeBlocks.push(match);
+      return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+    });
+    
+    // インラインコードをそのまま保持
+    const inlineCodes: string[] = [];
+    formatted = formatted.replace(/`[^`]+`/g, (match) => {
+      inlineCodes.push(match);
+      return `__INLINE_CODE_${inlineCodes.length - 1}__`;
+    });
+    
+    // 見出し (# ## ###) → 見出しテキストの前に空行と記号を追加
+    formatted = formatted.replace(/^#{1,6}\s+(.+)$/gm, (match) => {
+      const hashMatch = match.match(/^#+/);
+      if (!hashMatch) return match;
+      const level = hashMatch[0].length;
+      const text = match.replace(/^#+\s+/, '').trim();
+      const prefix = level === 1 ? '═══════════════════════\n' : level === 2 ? '───────────────────────\n' : '━━━━━━━━━━━━━━━━━━━━━━\n';
+      return `\n${prefix}${text}\n${prefix}\n`;
+    });
+    
+    // 太字 (**text** または __text__) → 構文を削除してテキストのみ
+    formatted = formatted.replace(/\*\*(.+?)\*\*/g, '$1');
+    formatted = formatted.replace(/__(.+?)__/g, '$1');
+    
+    // 斜体 (*text* または _text_) → 構文を削除してテキストのみ
+    formatted = formatted.replace(/\*(.+?)\*/g, '$1');
+    formatted = formatted.replace(/_(.+?)_/g, '$1');
+    
+    // 取り消し線 (~~text~~) → 構文を削除
+    formatted = formatted.replace(/~~(.+?)~~/g, '$1');
+    
+    // リンク [text](url) → text (url)
+    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+    
+    // 画像 ![alt](url) → [画像: alt]
+    formatted = formatted.replace(/!\[([^\]]*)\]\([^)]+\)/g, '[画像: $1]');
+    
+    // リスト (- または *) → • に統一（インデントを考慮）
+    formatted = formatted.replace(/^(\s*)[\-\*]\s+(.+)$/gm, (match, indent, text) => {
+      return `${indent}• ${text}`;
+    });
+    // 番号付きリスト → 番号を削除（インデントを考慮）
+    formatted = formatted.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1$2');
+    
+    // 水平線 (--- または ***) → 削除
+    formatted = formatted.replace(/^[-*]{3,}$/gm, '');
+    
+    // 引用 (> text) → "text" に変換
+    formatted = formatted.replace(/^>\s+(.+)$/gm, '"$1"');
+    
+    // テーブル形式を簡略化（| で区切られた行）
+    formatted = formatted.replace(/^\|(.+)\|$/gm, (match, content) => {
+      // ヘッダー行の後の区切り線を削除
+      if (content.trim().match(/^:?-+:?$/)) {
+        return '';
+      }
+      // テーブルセルをスペースで区切る
+      return content.split('|').map((cell: string) => cell.trim()).filter((cell: string) => cell).join(' | ');
+    });
+    
+    // コードブロックを復元
+    codeBlocks.forEach((code, index) => {
+      formatted = formatted.replace(`__CODE_BLOCK_${index}__`, code);
+    });
+    
+    // インラインコードを復元
+    inlineCodes.forEach((code, index) => {
+      formatted = formatted.replace(`__INLINE_CODE_${index}__`, code);
+    });
+    
+    // 連続する空行を2つまでに制限
+    formatted = formatted.replace(/\n{4,}/g, '\n\n\n');
+    
+    return formatted.trim();
+  }
+}
+
 class ExampleMentraOSApp extends AppServer {
   // セッションごとのセッションオブジェクトを管理
   private sessions: Map<string, AppSession> = new Map();
@@ -172,6 +258,8 @@ class ExampleMentraOSApp extends AppServer {
   private sessionPagers: Map<string, TextPager> = new Map();
   // 字幕データのキャッシュ（ファイルID -> 字幕エントリ配列）
   private subtitleCache: Map<string, SubtitleEntry[]> = new Map();
+  // セッションごとのファイルタイプを管理（マークダウン処理用）
+  private sessionFileTypes: Map<string, string> = new Map();
 
   constructor() {
     super({
@@ -242,6 +330,7 @@ class ExampleMentraOSApp extends AppServer {
         this.sessions.delete(sessionId);
         this.sessionTexts.delete(sessionId);
         this.sessionPagers.delete(sessionId);
+        this.sessionFileTypes.delete(sessionId);
         this.userIdToSessionId.delete(userId);
       });
 
@@ -329,15 +418,30 @@ class ExampleMentraOSApp extends AppServer {
         }
 
         let textContent = '';
+        let fileType = 'text'; // 'text', 'markdown', 'csv'
 
         if (req.file) {
           // ファイルがアップロードされた場合
           textContent = req.file.buffer.toString('utf-8');
+          // ファイルタイプを検出
+          const fileName = req.file.originalname.toLowerCase();
+          if (fileName.endsWith('.md') || fileName.endsWith('.markdown')) {
+            fileType = 'markdown';
+          } else if (fileName.endsWith('.csv')) {
+            fileType = 'csv';
+          }
         } else if (req.body.text) {
           // テキストが直接送信された場合
           textContent = req.body.text;
+          // ファイルタイプが指定されていない場合はtextとして扱う
+          fileType = req.body.fileType || 'text';
         } else {
           return res.status(400).json({ success: false, error: 'ファイルまたはテキストが必要です' });
+        }
+
+        // マークダウンファイルの場合は整形処理を適用
+        if (fileType === 'markdown') {
+          textContent = MarkdownFormatter.format(textContent);
         }
 
         // フォント設定関連のコード（現在はコメントアウト）
@@ -355,7 +459,8 @@ class ExampleMentraOSApp extends AppServer {
 
         // セッションごとにテキストを保存
         this.sessionTexts.set(sessionId, textContent);
-        this.debugLog(`テキストを受信: 長さ=${textContent.length}文字`);
+        this.sessionFileTypes.set(sessionId, fileType);
+        this.debugLog(`テキストを受信: 長さ=${textContent.length}文字, タイプ=${fileType}`);
 
         // サーバー側でページング処理を初期化
         const pager = new TextPager(textContent);
@@ -397,6 +502,43 @@ class ExampleMentraOSApp extends AppServer {
       }
 
       res.json({ success: true, text });
+    });
+
+    // 現在表示中のページテキストを取得（ARデバイス表示用）
+    app.get('/api/text/current', (req: any, res: any) => {
+      const userId = (req as any).authUserId;
+      
+      if (!userId) {
+        return res.status(401).json({ success: false, error: '認証が必要です' });
+      }
+
+      const sessionId = this.userIdToSessionId.get(userId);
+      if (!sessionId) {
+        return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+      }
+
+      const pager = this.sessionPagers.get(sessionId);
+      if (!pager) {
+        return res.status(404).json({ success: false, error: 'ページデータが見つかりません' });
+      }
+
+      const pageText = pager.getCurrentPage();
+      const pageInfo = pager.getPageInfo();
+      const cleanText = pageText
+        .replace(/[^\x20-\x7E\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\n]/g, '')
+        .trim();
+      
+      const displayText = `${cleanText}\n\n${pageInfo}`;
+
+      res.json({ 
+        success: true, 
+        text: displayText,
+        pageInfo: {
+          currentPage: pager.getCurrentPageNumber(),
+          totalPages: pager.getTotalPages(),
+          pageInfo: pageInfo
+        }
+      });
     });
   }
 

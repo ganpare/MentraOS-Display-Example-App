@@ -218,6 +218,41 @@
             font-size: 14px;
         }
         
+        /* ARデバイス表示エリア */
+        .ar-display-area {
+            margin-top: 20px;
+            padding: 20px;
+            background: #000;
+            border-radius: 10px;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #333;
+        }
+        
+        .ar-display-title {
+            color: #fff;
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-align: center;
+            opacity: 0.7;
+        }
+        
+        .ar-display-content {
+            color: #fff;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .ar-display-content:empty::before {
+            content: "ARデバイスに表示される内容がここに表示されます";
+            color: #666;
+            font-style: italic;
+        }
+        
         /* 音声プレーヤーページスタイル */
         .audio-file-list {
             margin-bottom: 20px;
@@ -328,7 +363,7 @@
                 <label for="fileInput" class="file-input-label">
                     📁 ファイルを選択
                 </label>
-                <input type="file" id="fileInput" accept=".txt,.text,.md,.markdown" />
+                <input type="file" id="fileInput" accept=".txt,.text,.md,.markdown,.csv" />
             </div>
             
             <div class="text-input-wrapper">
@@ -343,6 +378,12 @@
                     <button id="nextBtn" class="next-btn">次へ →</button>
                 </div>
                 <div id="pageInfo" class="page-info"></div>
+            </div>
+            
+            <!-- ARデバイス表示エリア -->
+            <div class="ar-display-area">
+                <div class="ar-display-title">👓 ARデバイス表示プレビュー</div>
+                <div class="ar-display-content" id="arDisplayContent"></div>
             </div>
             
             <div id="status" class="status"></div>
@@ -418,9 +459,31 @@
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const pageInfoEl = document.getElementById('pageInfo');
+        const arDisplayContent = document.getElementById('arDisplayContent');
         
         let selectedFile = null;
         let currentPageInfo = null;
+        
+        // ARデバイス表示内容を更新する関数
+        async function updateARDisplay() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/text/current`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.text) {
+                    arDisplayContent.textContent = data.text;
+                }
+            } catch (error) {
+                console.error('AR表示更新エラー:', error);
+            }
+        }
         
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -432,9 +495,11 @@
             
             if (file.type === 'text/plain' || 
                 file.type === 'text/markdown' || 
+                file.type === 'text/csv' ||
                 file.name.endsWith('.txt') || 
                 file.name.endsWith('.md') || 
-                file.name.endsWith('.markdown')) {
+                file.name.endsWith('.markdown') ||
+                file.name.endsWith('.csv')) {
                 
                 statusEl.textContent = 'ファイルを読み込み中...';
                 statusEl.className = 'status';
@@ -484,6 +549,9 @@
                             
                             statusEl.textContent = `✅ ファイルを読み込みました。ページ ${currentPageInfo.pageInfo} を表示しました。`;
                             statusEl.className = 'status success';
+                            
+                            // ARデバイス表示を更新
+                            setTimeout(() => updateARDisplay(), 500);
                         } else {
                             statusEl.textContent = `❌ エラー: ${data.error}`;
                             statusEl.className = 'status error';
@@ -495,7 +563,7 @@
                 };
                 reader.readAsText(file);
             } else {
-                statusEl.textContent = 'テキストファイル(.txt, .md)を選択してください';
+                statusEl.textContent = 'テキストファイル(.txt, .md, .csv)を選択してください';
                 statusEl.className = 'status error';
             }
         });
@@ -556,6 +624,9 @@
                 
                 statusEl.textContent = `✅ ARグラスに表示しました！ページ ${currentPageInfo.pageInfo}`;
                 statusEl.className = 'status success';
+                
+                // ARデバイス表示を更新
+                setTimeout(() => updateARDisplay(), 500);
             } catch (error) {
                 statusEl.textContent = '❌ 通信エラー: ' + error.message;
                 statusEl.className = 'status error';
@@ -568,6 +639,8 @@
             if (currentPageInfo) {
                 pageInfoEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
             }
+            // ARデバイス表示を更新
+            updateARDisplay();
         }
         
         prevBtn.addEventListener('click', async () => {
