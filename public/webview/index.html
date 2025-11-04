@@ -184,104 +184,7 @@
         const pageInfoEl = document.getElementById('pageInfo');
 
         let selectedFile = null;
-        
-        // クライアント側でページングを管理
-        class TextPager {
-            constructor(text, maxCharsPerPage = 150) {
-                this.pages = [];
-                this.currentPage = 0;
-                this.maxCharsPerPage = maxCharsPerPage;
-                this.splitIntoPages(text);
-            }
-
-            splitIntoPages(text) {
-                this.pages = [];
-                if (!text || text.trim().length === 0) {
-                    this.pages = [''];
-                    return;
-                }
-
-                const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-                const paragraphs = cleanText.split('\n');
-                
-                let currentPage = '';
-                for (let i = 0; i < paragraphs.length; i++) {
-                    const paragraph = paragraphs[i].trim();
-                    if (!paragraph) {
-                        if (currentPage) currentPage += '\n';
-                        continue;
-                    }
-
-                    if ((currentPage + paragraph).length <= this.maxCharsPerPage) {
-                        if (currentPage) currentPage += '\n';
-                        currentPage += paragraph;
-                    } else {
-                        if (currentPage) {
-                            this.pages.push(currentPage.trim());
-                            currentPage = '';
-                        }
-
-                        let remaining = paragraph;
-                        while (remaining.length > 0) {
-                            if (remaining.length <= this.maxCharsPerPage) {
-                                currentPage = remaining;
-                                remaining = '';
-                            } else {
-                                let splitIndex = this.maxCharsPerPage;
-                                const lastSpaceIndex = remaining.lastIndexOf(' ', this.maxCharsPerPage);
-                                if (lastSpaceIndex > this.maxCharsPerPage * 0.7) {
-                                    splitIndex = lastSpaceIndex;
-                                }
-                                this.pages.push(remaining.substring(0, splitIndex).trim());
-                                remaining = remaining.substring(splitIndex).trim();
-                            }
-                        }
-                    }
-                }
-
-                if (currentPage) {
-                    this.pages.push(currentPage.trim());
-                }
-
-                if (this.pages.length === 0) {
-                    this.pages = [''];
-                }
-            }
-
-            getCurrentPage() {
-                return this.pages[this.currentPage] || '';
-            }
-
-            nextPage() {
-                if (this.currentPage < this.pages.length - 1) {
-                    this.currentPage++;
-                    return true;
-                }
-                return false;
-            }
-
-            prevPage() {
-                if (this.currentPage > 0) {
-                    this.currentPage--;
-                    return true;
-                }
-                return false;
-            }
-
-            getCurrentPageNumber() {
-                return this.currentPage + 1;
-            }
-
-            getTotalPages() {
-                return this.pages.length;
-            }
-
-            getPageInfo() {
-                return `${this.getCurrentPageNumber()}/${this.getTotalPages()}`;
-            }
-        }
-
-        let textPager = null;
+        let currentPageInfo = null; // サーバー側から取得したページ情報を保持
 
         // ファイル選択
         fileInput.addEventListener('change', async (e) => {
@@ -354,11 +257,16 @@
                         console.log('[デバッグ] ファイルアップロード成功:', data);
                         
                         if (data.success) {
-                            // クライアント側でページングを初期化
-                            textPager = new TextPager(textContent);
-                            console.log('[デバッグ] TextPager初期化完了。ページ数:', textPager.getTotalPages());
+                            // サーバー側でページング処理が完了し、最初のページが表示された
+                            currentPageInfo = {
+                                currentPage: data.currentPage,
+                                totalPages: data.totalPages,
+                                pageInfo: `${data.currentPage}/${data.totalPages}`
+                            };
+                            updatePageInfo();
+                            navigationArea.style.display = 'block';
                             
-                            statusEl.textContent = '✅ ファイルを読み込みました。ARグラスに表示ボタンを押してください。';
+                            statusEl.textContent = `✅ ファイルを読み込みました。ページ ${currentPageInfo.pageInfo} を表示しました。`;
                             statusEl.className = 'status success';
                         } else {
                             statusEl.textContent = `❌ エラー: ${data.error}`;
@@ -387,154 +295,23 @@
                 return;
             }
 
-            // 既にTextPagerが初期化されている場合は、それを使用
-            // ファイルから読み込んだ場合は既に初期化済み
-            if (!textPager) {
-                // テキスト入力から直接の場合は、ここでサーバーに送信してから初期化
-                displayBtn.disabled = true;
-                statusEl.textContent = '送信中...';
-                statusEl.className = 'status';
-
-                try {
-                    const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            text: text
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        let errorData;
-                        try {
-                            errorData = JSON.parse(errorText);
-                        } catch (e) {
-                            errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
-                        }
-                        console.error('Upload error:', errorData);
-                        statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
-                        statusEl.className = 'status error';
-                        displayBtn.disabled = false;
-                        return;
-                    }
-
-                    const data = await response.json();
-                    console.log('[デバッグ] /api/upload-text レスポンス:', data);
-                    
-                    if (!data.success) {
-                        console.error('Upload error:', data.error);
-                        statusEl.textContent = '❌ エラー: ' + data.error;
-                        statusEl.className = 'status error';
-                        displayBtn.disabled = false;
-                        return;
-                    }
-                    
-                    // TextPagerを初期化
-                    textPager = new TextPager(text);
-                } catch (error) {
-                    console.error('Upload error:', error);
-                    statusEl.textContent = '❌ 通信エラー: ' + error.message;
-                    statusEl.className = 'status error';
-                    displayBtn.disabled = false;
-                    return;
-                }
-            }
-
-            // 最初のページをARグラスに表示
+            // テキスト入力から直接の場合は、サーバーに送信
             displayBtn.disabled = true;
-            statusEl.textContent = 'ARグラスに表示中...';
+            statusEl.textContent = '送信中...';
             statusEl.className = 'status';
-            
-            try {
-                await displayCurrentPage();
-                
-                // ナビゲーションボタンを表示
-                navigationArea.style.display = 'block';
-                updatePageInfo();
-                
-                statusEl.textContent = '✅ ARグラスに表示しました！';
-                statusEl.className = 'status success';
-            } catch (error) {
-                console.error('Display error:', error);
-                statusEl.textContent = `❌ 表示エラー: ${error.message || error}`;
-                statusEl.className = 'status error';
-            } finally {
-                displayBtn.disabled = false;
-            }
-        });
-
-        // 現在のページをARグラスに表示（クライアント側でページング管理）
-        async function displayCurrentPage() {
-            if (!textPager) {
-                console.error('TextPagerが初期化されていません');
-                statusEl.textContent = '❌ エラー: TextPagerが初期化されていません';
-                statusEl.className = 'status error';
-                return;
-            }
-
-            const pageText = textPager.getCurrentPage();
-            const pageInfo = textPager.getPageInfo();
-
-            console.log('[デバッグ] displayCurrentPage呼び出し:', {
-                pageText: pageText ? pageText.substring(0, 50) + '...' : '空',
-                pageInfo: pageInfo,
-                pageTextLength: pageText ? pageText.length : 0
-            });
-
-            if (!pageText) {
-                console.error('ページテキストが空です');
-                statusEl.textContent = '❌ エラー: ページテキストが空です';
-                statusEl.className = 'status error';
-                return;
-            }
-
-            // テキストのクリーンアップ（制御文字を除去、改行は保持）
-            const cleanText = pageText
-                .replace(/[^\x20-\x7E\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\n]/g, '')
-                .trim();
-
-            console.log('[デバッグ] クリーンアップ後:', {
-                cleanTextLength: cleanText.length,
-                cleanTextPreview: cleanText.substring(0, 50) + '...'
-            });
-
-            if (!cleanText) {
-                console.error('クリーンアップ後のテキストが空です');
-                statusEl.textContent = '❌ エラー: クリーンアップ後のテキストが空です';
-                statusEl.className = 'status error';
-                return;
-            }
-
-            // ARグラスにページテキストとページ情報を表示
-            const displayText = `${cleanText}\n\n${pageInfo}`;
-            console.log('[デバッグ] 送信するテキスト:', {
-                displayTextLength: displayText.length,
-                displayTextPreview: displayText.substring(0, 100) + '...'
-            });
 
             try {
-                // サーバーに表示するテキストだけを送信
-                console.log('[デバッグ] /api/display-text にリクエスト送信');
-                const response = await fetch(`${apiBaseUrl}/api/display-text`, {
+                const response = await fetch(`${apiBaseUrl}/api/upload-text`, {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ text: displayText })
+                    body: JSON.stringify({
+                        text: text
+                    })
                 });
 
-                console.log('[デバッグ] /api/display-text レスポンス受信:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    ok: response.ok
-                });
-
-                // レスポンスステータスをチェック
                 if (!response.ok) {
                     const errorText = await response.text();
                     let errorData;
@@ -543,71 +320,175 @@
                     } catch (e) {
                         errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
                     }
-                    console.error('Display error:', errorData);
-                    statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
+                    console.error('Upload error:', errorData);
+                    statusEl.textContent = `❌ アップロードエラー: ${errorData.error || `HTTP ${response.status}`}`;
                     statusEl.className = 'status error';
-                    throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                    displayBtn.disabled = false;
+                    return;
                 }
 
                 const data = await response.json();
-                console.log('[デバッグ] /api/display-text レスポンスデータ:', data);
+                console.log('[デバッグ] /api/upload-text レスポンス:', data);
                 
                 if (!data.success) {
-                    console.error('Display error:', data.error);
-                    statusEl.textContent = `❌ エラー: ${data.error}`;
+                    console.error('Upload error:', data.error);
+                    statusEl.textContent = '❌ エラー: ' + data.error;
                     statusEl.className = 'status error';
-                } else {
-                    console.log('[デバッグ] テキスト表示成功');
+                    displayBtn.disabled = false;
+                    return;
                 }
+                
+                // サーバー側でページング処理が完了し、最初のページが表示された
+                currentPageInfo = {
+                    currentPage: data.currentPage,
+                    totalPages: data.totalPages,
+                    pageInfo: `${data.currentPage}/${data.totalPages}`
+                };
+                updatePageInfo();
+                navigationArea.style.display = 'block';
+                
+                statusEl.textContent = `✅ ARグラスに表示しました！ページ ${currentPageInfo.pageInfo}`;
+                statusEl.className = 'status success';
             } catch (error) {
-                console.error('Display error:', error);
-                console.error('Display error stack:', error.stack);
-                statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
+                console.error('Upload error:', error);
+                statusEl.textContent = '❌ 通信エラー: ' + error.message;
                 statusEl.className = 'status error';
+            } finally {
+                displayBtn.disabled = false;
             }
-        }
+        });
 
         // ページ情報を更新
         function updatePageInfo() {
-            if (textPager) {
-                pageInfoEl.textContent = `ページ ${textPager.getPageInfo()}`;
+            if (currentPageInfo) {
+                pageInfoEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
             }
         }
 
         // 前へボタン
         prevBtn.addEventListener('click', async () => {
-            if (!textPager) return;
+            if (!currentPageInfo) return;
             
             prevBtn.disabled = true;
-            if (textPager.prevPage()) {
-                await displayCurrentPage();
-                updatePageInfo();
-            } else {
-                statusEl.textContent = '最初のページです';
-                statusEl.className = 'status';
-                setTimeout(() => {
-                    statusEl.style.display = 'none';
-                }, 2000);
+            statusEl.textContent = '前のページに移動中...';
+            statusEl.className = 'status';
+            
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/media/event`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        eventType: 'prevpage'
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+                    }
+                    console.error('Media event error:', errorData);
+                    statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
+                    statusEl.className = 'status error';
+                    prevBtn.disabled = false;
+                    return;
+                }
+
+                const data = await response.json();
+                console.log('[デバッグ] /api/media/event (prevpage) レスポンス:', data);
+                
+                if (data.success && data.pageInfo) {
+                    currentPageInfo = {
+                        currentPage: data.pageInfo.currentPage,
+                        totalPages: data.pageInfo.totalPages,
+                        pageInfo: data.pageInfo.pageInfo
+                    };
+                    updatePageInfo();
+                    statusEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
+                    statusEl.className = 'status success';
+                    setTimeout(() => {
+                        statusEl.style.display = 'none';
+                    }, 2000);
+                } else if (!data.success) {
+                    statusEl.textContent = `❌ エラー: ${data.error || 'ページ移動に失敗しました'}`;
+                    statusEl.className = 'status error';
+                }
+            } catch (error) {
+                console.error('Media event error:', error);
+                statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
+                statusEl.className = 'status error';
+            } finally {
+                prevBtn.disabled = false;
             }
-            prevBtn.disabled = false;
         });
 
         // 次へボタン
         nextBtn.addEventListener('click', async () => {
-            if (!textPager) return;
+            if (!currentPageInfo) return;
             
             nextBtn.disabled = true;
-            if (textPager.nextPage()) {
-                await displayCurrentPage();
-                updatePageInfo();
-            } else {
-                statusEl.textContent = '最後のページです';
-                statusEl.className = 'status';
-                setTimeout(() => {
-                    statusEl.style.display = 'none';
-                }, 2000);
+            statusEl.textContent = '次のページに移動中...';
+            statusEl.className = 'status';
+            
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/media/event`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        eventType: 'nextpage'
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+                    }
+                    console.error('Media event error:', errorData);
+                    statusEl.textContent = `❌ エラー: ${errorData.error || `HTTP ${response.status}`}`;
+                    statusEl.className = 'status error';
+                    nextBtn.disabled = false;
+                    return;
+                }
+
+                const data = await response.json();
+                console.log('[デバッグ] /api/media/event (nextpage) レスポンス:', data);
+                
+                if (data.success && data.pageInfo) {
+                    currentPageInfo = {
+                        currentPage: data.pageInfo.currentPage,
+                        totalPages: data.pageInfo.totalPages,
+                        pageInfo: data.pageInfo.pageInfo
+                    };
+                    updatePageInfo();
+                    statusEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
+                    statusEl.className = 'status success';
+                    setTimeout(() => {
+                        statusEl.style.display = 'none';
+                    }, 2000);
+                } else if (!data.success) {
+                    statusEl.textContent = `❌ エラー: ${data.error || 'ページ移動に失敗しました'}`;
+                    statusEl.className = 'status error';
+                }
+            } catch (error) {
+                console.error('Media event error:', error);
+                statusEl.textContent = `❌ 通信エラー: ${error.message || error}`;
+                statusEl.className = 'status error';
+            } finally {
+                nextBtn.disabled = false;
             }
-            nextBtn.disabled = false;
         });
     </script>
 </body>
