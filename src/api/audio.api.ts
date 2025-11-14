@@ -13,9 +13,12 @@ export interface AudioAPIDependencies {
   userIdToSessionId: Map<string, string>;
   subtitleCache: Map<string, SubtitleEntry[]>;
   getAppSessionForUser: (userId: string) => AppSession | null;
+  // 音声プレーヤー制御用（オプション、外部から渡す場合）
+  sessionCommandQueues?: Map<string, Array<{ type: 'seek' | 'speed' | 'play' | 'pause' | 'next' | 'prev'; value?: number; timestamp: number }>>;
+  sessionPlaybackStates?: Map<string, { currentSubtitleIndex: number; currentTime: number; lastUpdateTime: number }>;
 }
 
-// セッションごとの音声プレーヤー状態
+// セッションごとの音声プレーヤー状態（内部で作成する場合のフォールバック）
 const sessionRepeatStates = new Map<string, boolean>();
 const sessionSpeedStates = new Map<string, number>();
 
@@ -26,16 +29,16 @@ interface PlaybackState {
   lastUpdateTime: number;
 }
 
-const sessionPlaybackStates = new Map<string, PlaybackState>();
+// 内部で作成する場合のフォールバックMap（外部から渡されない場合）
+let internalSessionPlaybackStates = new Map<string, PlaybackState>();
+let internalSessionCommandQueues = new Map<string, ControlCommand[]>();
 
 // セッションごとの制御命令キュー
 interface ControlCommand {
-  type: 'seek' | 'speed';
-  value: number;
+  type: 'seek' | 'speed' | 'play' | 'pause' | 'next' | 'prev' | 'next_subtitle' | 'prev_subtitle' | 'repeat';
+  value?: number;
   timestamp: number;
 }
-
-const sessionCommandQueues = new Map<string, ControlCommand[]>();
 
 export function setupAudioAPI(
   app: Express,
@@ -43,6 +46,10 @@ export function setupAudioAPI(
   createAuthMiddlewareForPath: (path: string) => any
 ): void {
   app.use('/api/audio', createAuthMiddlewareForPath('/api/audio'));
+
+  // 外部から渡されたMapを使用、なければ内部Mapを使用
+  const sessionPlaybackStates = deps.sessionPlaybackStates || internalSessionPlaybackStates;
+  const sessionCommandQueues = deps.sessionCommandQueues || internalSessionCommandQueues;
 
   // ディレクトリ一覧を取得
   app.get('/api/audio/directories', (req: any, res: any) => {

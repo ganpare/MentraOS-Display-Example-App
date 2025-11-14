@@ -462,6 +462,45 @@
                             if (speedBtn) {
                                 speedBtn.textContent = `⚡ ${cmd.value}x`;
                             }
+                        } else if (cmd.type === 'play') {
+                            console.log('[DEBUG] Executing play');
+                            audioElement.play().catch(error => {
+                                console.error('[ERROR] Play error:', error);
+                            });
+                        } else if (cmd.type === 'pause') {
+                            console.log('[DEBUG] Executing pause');
+                            audioElement.pause();
+                        } else if (cmd.type === 'next') {
+                            console.log('[DEBUG] Executing next track');
+                            // 次のトラックを再生（実装が必要）
+                            // TODO: 現在のファイルリストから次のファイルを取得して再生
+                        } else if (cmd.type === 'prev') {
+                            console.log('[DEBUG] Executing previous track');
+                            // 前のトラックを再生（実装が必要）
+                            // TODO: 現在のファイルリストから前のファイルを取得して再生
+                        } else if (cmd.type === 'next_subtitle') {
+                            console.log('[DEBUG] Executing next subtitle');
+                            if (nextSubtitleBtn) {
+                                nextSubtitleBtn.click();
+                            }
+                        } else if (cmd.type === 'prev_subtitle') {
+                            console.log('[DEBUG] Executing previous subtitle');
+                            if (prevSubtitleBtn) {
+                                prevSubtitleBtn.click();
+                            }
+                        } else if (cmd.type === 'repeat') {
+                            console.log('[DEBUG] Executing repeat toggle');
+                            if (repeatSubtitleBtn) {
+                                repeatSubtitleBtn.click();
+                            }
+                        } else if (cmd.type === 'speed' && cmd.value) {
+                            console.log('[DEBUG] Executing speed change to:', cmd.value);
+                            // speedコマンドは既に処理されているが、念のため
+                            currentSpeed = cmd.value;
+                            audioElement.playbackRate = cmd.value;
+                            if (speedBtn) {
+                                speedBtn.textContent = `⚡ ${cmd.value}x`;
+                            }
                         }
                     });
                 }

@@ -1,22 +1,68 @@
-音声プレーヤー機能の追加とコードリファクタリング
+feat: Bluetoothコントローラー連携とボタン設定機能の実装
 
-主な変更内容:
-- トップページを追加し、テキストリーダーと音声プレーヤーモードを切り替え可能に
-- 音声プレーヤー機能を実装:
-  * サーバー側の音声ファイル一覧API (GET /api/audio/files)
-  * HTTP Range対応の音声ストリーミングAPI (GET /api/audio/stream/:id)
-  * SRT字幕パーサーと字幕取得API (GET /api/audio/subtitles/:id)
-  * 音声再生状態管理API (POST /api/audio/state) でARグラスに字幕表示
-- Webviewに音声プレーヤーUIを実装:
-  * 音声ファイル選択
-  * HTML5 Audioによる再生
-  * 再生/一時停止、10秒進む/戻る、次字幕/前字幕/リピートボタン
-  * 字幕の自動同期表示
-- コードリファクタリング:
-  * 認証ミドルウェア設定を共通化 (createAuthMiddlewareForPath)
-  * デバッグログを環境変数DEBUGで制御可能に
-  * デバッグログヘルパーメソッド追加 (debugLog, debugError)
-  * 重複コードの削減とコードの簡潔化
-- README.mdにAUDIO_SOURCE_DIR環境変数の説明を追加
-- セッション管理のデバッグログを改善
+## 主な変更内容
 
+### 1. Bluetoothコントローラー連携機能
+- iOS側から来るメディアイベント（playpause, nexttrack, prevtrack）を処理
+- 現在の画面状態（テキストリーダー/音声プレーヤー）に基づいて適切なアクションを実行
+- メディアコントロールハンドラー（mediaControlHandler.js）の実装
+- ダブルクリック検出機能の実装
+- 画面ごとのアクションフィルタリング機能
+
+### 2. ボタン設定機能
+- ユーザー設定管理サービス（UserSettings.ts）の実装
+- アクション（GUIボタン）とトリガー（Bluetoothボタン）のマッピング機能
+- 設定画面UI（settings.js）の実装
+- 設定API（settings.api.ts）の実装
+- シングル/ダブルクリックによるトリガー割り当て機能
+
+### 3. ページ管理機能の改善
+- 現在のアクティブページの追跡機能（window.currentActivePage）
+- ページ変更イベントの発火機能
+- Bluetoothコントローラー画面と設定画面の追加
+
+### 4. メディアコントロールAPIの拡張
+- メディアイベント処理API（/api/media/event）の実装
+- 画面状態に基づいたアクション実行機能
+- 音声プレーヤー制御コマンドキューの統合
+- イベント履歴機能の実装
+
+### 5. ドキュメントの追加
+- BUTTON_REFERENCE.md: ボタンリファレンスドキュメント
+- SERVER_PERSISTENCE.md: サーバーパーシステンスの説明
+- byobu.md: byobuの使い方ガイド
+- README.md: 常時起動方法の追加
+
+### 6. UI/UXの改善
+- Bluetoothコントローラーテスト画面の追加
+- 設定画面のUI実装
+- スタイルの追加と改善
+
+## 技術的な詳細
+
+### 通信フロー
+1. iOS側でBluetoothメディアコントローラーイベントを受信
+2. React Native層でイベントを処理
+3. WebView内のJavaScriptでイベントを受信
+4. 現在のページ情報を含めてサーバーに送信
+5. サーバー側で画面状態に基づいて適切なアクションを実行
+
+### 設定データ構造
+- アクションID（text_prevBtn, audio_playBtnなど）→ トリガー（playpause, nexttrack, prevtrack）のマッピング
+- シングルクリックとダブルクリックの両方に対応
+- ユーザーごとの設定をファイル（data/settings/{userId}.json）に保存
+
+### 画面状態管理
+- テキストリーダー画面: text_* アクションのみ有効
+- 音声プレーヤー画面: audio_* アクションのみ有効
+- 同じメディアイベントでも画面ごとに異なるアクションを実行可能
+
+## 影響範囲
+- src/api/media.api.ts: メディアコントロールAPIの大幅な拡張
+- src/api/settings.api.ts: 新規追加（設定API）
+- src/services/settings/UserSettings.ts: 新規追加（設定管理サービス）
+- public/webview/js/mediaControlHandler.js: 新規追加（メディアコントロールハンドラー）
+- public/webview/js/settings/settings.js: 新規追加（設定画面）
+- public/webview/js/main.js: ページ管理機能の改善
+- public/webview/index.html: 新しい画面の追加
+- public/webview/css/styles.css: スタイルの追加

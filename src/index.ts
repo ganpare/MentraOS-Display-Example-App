@@ -5,6 +5,7 @@ import { SubtitleEntry } from './services/audio/SRTParser';
 import { setupFileAPI, FileAPIDependencies } from './api/file.api';
 import { setupMediaControllerAPI, MediaAPIDependencies } from './api/media.api';
 import { setupAudioAPI, AudioAPIDependencies } from './api/audio.api';
+import { setupSettingsAPI, SettingsAPIDependencies } from './api/settings.api';
 import { createAuthMiddleware } from './utils/auth';
 import { debugLog, debugError } from './utils/debug';
 import {
@@ -22,6 +23,11 @@ class ExampleMentraOSApp extends AppServer {
   private sessionPagers: Map<string, TextPager> = new Map();
   private subtitleCache: Map<string, SubtitleEntry[]> = new Map();
   private sessionFileTypes: Map<string, string> = new Map();
+  private mediaEventHistory: Array<{ userId: string; eventType: string; timestamp: number }> = [];
+  
+  // 音声プレーヤー制御用（共有）
+  private sessionCommandQueues: Map<string, Array<{ type: 'seek' | 'speed' | 'play' | 'pause' | 'next' | 'prev'; value?: number; timestamp: number }>> = new Map();
+  private sessionPlaybackStates: Map<string, { currentSubtitleIndex: number; currentTime: number; lastUpdateTime: number }> = new Map();
 
   constructor() {
     super({
@@ -67,9 +73,21 @@ class ExampleMentraOSApp extends AppServer {
       sessions: this.sessions,
       userIdToSessionId: this.userIdToSessionId,
       sessionPagers: this.sessionPagers,
+      mediaEventHistory: this.mediaEventHistory,
+      sessionCommandQueues: this.sessionCommandQueues,
+      sessionPlaybackStates: this.sessionPlaybackStates,
       getAppSessionForUser: (userId: string) => {
         const sessionId = this.userIdToSessionId.get(userId);
         return sessionId ? this.sessions.get(sessionId) || null : null;
+      },
+      getUserIdFromSession: (session: AppSession) => {
+        // sessionからuserIdを逆引き
+        for (const [uid, sid] of this.userIdToSessionId.entries()) {
+          if (this.sessions.get(sid) === session) {
+            return uid;
+          }
+        }
+        return null;
       }
     };
     setupMediaControllerAPI(app, mediaDeps, (path: string) => this.createAuthMiddlewareForPath(path));
@@ -79,12 +97,23 @@ class ExampleMentraOSApp extends AppServer {
       sessions: this.sessions,
       userIdToSessionId: this.userIdToSessionId,
       subtitleCache: this.subtitleCache,
+      sessionCommandQueues: this.sessionCommandQueues,
+      sessionPlaybackStates: this.sessionPlaybackStates,
       getAppSessionForUser: (userId: string) => {
         const sessionId = this.userIdToSessionId.get(userId);
         return sessionId ? this.sessions.get(sessionId) || null : null;
       }
     };
     setupAudioAPI(app, audioDeps, (path: string) => this.createAuthMiddlewareForPath(path));
+
+    // 設定API
+    const settingsDeps: SettingsAPIDependencies = {
+      getAppSessionForUser: (userId: string) => {
+        const sessionId = this.userIdToSessionId.get(userId);
+        return sessionId ? this.sessions.get(sessionId) || null : null;
+      }
+    };
+    setupSettingsAPI(app, settingsDeps, (path: string) => this.createAuthMiddlewareForPath(path));
   }
 
   protected async onSession(session: AppSession, sessionId: string, userId: string): Promise<void> {

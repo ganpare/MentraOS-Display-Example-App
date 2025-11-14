@@ -14,6 +14,8 @@
             <div class="top-menu">
                 <button class="menu-btn" id="textReaderBtn">📄 テキストリーダー</button>
                 <button class="menu-btn" id="audioPlayerBtn">🎵 音声プレーヤー</button>
+                <button class="menu-btn" id="btControllerBtn">🎮 Bluetoothコントローラー</button>
+                <button class="menu-btn" id="settingsBtn">⚙️ ボタン設定</button>
             </div>
         </div>
         
@@ -110,6 +112,67 @@
             
             <div id="audioStatus" class="status"></div>
         </div>
+        
+        <!-- Bluetoothコントローラーテストページ -->
+        <div id="btControllerPage" class="page">
+            <button class="back-btn" id="backToTopBtn3">← 戻る</button>
+            <h1>🎮 Bluetoothコントローラーテスト</h1>
+            
+            <div class="bt-controller-status">
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">接続待機中...</span>
+                </div>
+            </div>
+            
+            <div class="bt-controller-info">
+                <p>iOSのメディアコントロールイベントを受信して表示します。</p>
+                <p>Bluetoothコントローラーを接続して、ボタンを押してください。</p>
+            </div>
+            
+            <div class="bt-controller-test-buttons">
+                <h3>テストボタン（シミュレーション）</h3>
+                <div class="test-button-grid">
+                    <button class="test-btn" data-event="playpause">⏯️ 再生/一時停止</button>
+                    <button class="test-btn" data-event="nexttrack">⏭️ 次の曲</button>
+                    <button class="test-btn" data-event="prevtrack">⏮️ 前の曲</button>
+                    <button class="test-btn" data-event="skipforward">⏩ 早送り</button>
+                    <button class="test-btn" data-event="skipbackward">⏪ 巻き戻し</button>
+                    <button class="test-btn" data-event="play">▶️ 再生</button>
+                    <button class="test-btn" data-event="pause">⏸️ 一時停止</button>
+                    <button class="test-btn" data-event="stop">⏹️ 停止</button>
+                </div>
+            </div>
+            
+            <div class="bt-controller-event-log">
+                <div class="event-log-header">
+                    <h3>📋 イベントログ</h3>
+                    <button class="clear-log-btn" id="clearLogBtn">クリア</button>
+                </div>
+                <div class="event-log-content" id="eventLogContent">
+                    <div class="event-log-empty">イベントログがここに表示されます</div>
+                </div>
+            </div>
+            
+            <div id="btControllerStatus" class="status"></div>
+        </div>
+        
+        <!-- ボタン設定ページ -->
+        <div id="settingsPage" class="page">
+            <button class="back-btn" id="backToTopBtn4">← 戻る</button>
+            <h1>⚙️ ボタン設定</h1>
+            
+            <div class="settings-info">
+                <p>Bluetoothコントローラーのボタンに機能を割り当てます。</p>
+                <p>シングルクリックとダブルクリックで異なる機能を設定できます。</p>
+            </div>
+            
+            <div class="settings-container" id="settingsContainer">
+                <div class="settings-loading">設定を読み込み中...</div>
+            </div>
+            
+            <div id="settingsStatus" class="status"></div>
+        </div>
     </div>
 
     <!-- JavaScript モジュール -->
@@ -117,5 +180,8 @@
     <script src="js/main.js?v=20241104-3"></script>
     <script src="js/textReader/textReader.js?v=20241104-3"></script>
     <script src="js/audioPlayer/audioPlayer.js?v=20241104-3"></script>
+    <script src="js/btController/btController.js?v=20241104-3"></script>
+    <script src="js/settings/settings.js?v=20241104-3"></script>
+    <script src="js/mediaControlHandler.js?v=20241104-3"></script>
 </body>
 </html>

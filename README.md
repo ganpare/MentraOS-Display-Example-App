@@ -110,6 +110,94 @@ bun run start
 - `.env` ファイルの `PORT` を変更してください
 - ngrok を使用する場合は、ngrok のポート番号も合わせて変更してください
 
+### 常時起動（バックグラウンド実行）
+
+#### 方法1: byobu（開発中におすすめ）
+
+開発中に簡単にバックグラウンドで起動したい場合：
+
+```bash
+# byobuを起動
+byobu
+
+# プロジェクトディレクトリに移動
+cd /home/hide-deployment/projects/MentraOS/AugmentOS-Cloud-Example-App
+
+# ログを保存しながら起動
+bun run dev:tee
+
+# byobuから抜ける: F6 を押す（または Ctrl+A を押してから D を押す）
+# 再接続: byobu コマンドで再接続
+# 終了: byobuセッション内で Ctrl+C を押す
+```
+
+byobuの便利なコマンド：
+- **セッションから抜ける**: `F6` または `Ctrl+A` を押してから `D`
+- **再接続**: `byobu` コマンドで自動再接続
+- **セッション一覧**: `byobu ls`
+- **特定セッションに接続**: `byobu attach -t <session-name>`
+
+#### 方法2: systemd（本番環境におすすめ）
+
+システムサービスとして常時起動し、再起動後も自動起動させる場合：
+
+```bash
+# サービスファイルを作成
+sudo nano /etc/systemd/system/mentraos-app.service
+```
+
+以下の内容を追加：
+
+```ini
+[Unit]
+Description=MentraOS App Server
+After=network.target
+
+[Service]
+Type=simple
+User=hide-deployment
+WorkingDirectory=/home/hide-deployment/projects/MentraOS/AugmentOS-Cloud-Example-App
+ExecStart=/home/hide-deployment/.bun/bin/bun run start
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/hide-deployment/projects/MentraOS/AugmentOS-Cloud-Example-App/server.log
+StandardError=append:/home/hide-deployment/projects/MentraOS/AugmentOS-Cloud-Example-App/server.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**注意**: `ExecStart` のパスは `which bun` で確認してください。
+
+```bash
+# systemdをリロード
+sudo systemctl daemon-reload
+
+# サービスを有効化（起動時に自動起動）
+sudo systemctl enable mentraos-app
+
+# サービスを開始
+sudo systemctl start mentraos-app
+
+# ステータス確認
+sudo systemctl status mentraos-app
+
+# ログを確認
+sudo journalctl -u mentraos-app -f
+# または
+tail -f server.log
+```
+
+**systemdのメリット:**
+- システム再起動後も自動起動
+- クラッシュ時に自動再起動
+- ログ管理が標準化されている
+
+**byobuのメリット:**
+- 開発中に簡単に起動・停止・確認できる
+- セッション管理が簡単
+- ログを直接確認できる
 
 ### Next Steps
 

@@ -5,6 +5,8 @@
   "scripts": {
     "start": "bun src/index.ts",
     "dev": "bun --hot src/index.ts",
+    "dev:log": "bun --hot src/index.ts > server.log 2>&1",
+    "dev:tee": "bun --hot src/index.ts 2>&1 | tee server.log",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",

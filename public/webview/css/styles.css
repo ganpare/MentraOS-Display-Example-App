@@ -467,7 +467,190 @@ button:disabled {
     min-height: 60px;
     text-align: center;
     color: #666;
+}
+
+/* Bluetoothコントローラーテストページスタイル */
+.bt-controller-status {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    background: #6c757d;
+    animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+    background: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-dot.disconnected {
+    background: #6c757d;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.bt-controller-info {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #e7f3ff;
+    border-radius: 10px;
+    border-left: 4px solid #007bff;
+}
+
+.bt-controller-info p {
+    margin: 5px 0;
+    color: #004085;
     font-size: 14px;
+}
+
+.bt-controller-test-buttons {
+    margin-bottom: 20px;
+}
+
+.bt-controller-test-buttons h3 {
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.test-button-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.test-btn {
+    padding: 12px 15px;
+    background: #17a2b8;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.test-btn:hover {
+    background: #138496;
+    transform: translateY(-2px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.test-btn:active {
+    transform: translateY(0);
+}
+
+.bt-controller-event-log {
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.event-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: #343a40;
+    color: white;
+}
+
+.event-log-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.clear-log-btn {
+    padding: 5px 15px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.clear-log-btn:hover {
+    background: #c82333;
+}
+
+.event-log-content {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.event-log-empty {
+    text-align: center;
+    color: #999;
+    padding: 20px;
+    font-style: italic;
+}
+
+.event-log-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    margin-bottom: 5px;
+    background: white;
+    border-radius: 5px;
+    font-size: 13px;
+    border-left: 3px solid #007bff;
+}
+
+.event-log-time {
+    color: #666;
+    font-size: 11px;
+    min-width: 70px;
+}
+
+.event-log-source {
+    font-size: 16px;
+    min-width: 25px;
+}
+
+.event-log-event {
+    flex: 1;
+    font-weight: 600;
+    color: #333;
+}
+
+.event-log-type {
+    color: #999;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.event-log-meta {
+    font-size: 11px;
+    color: #4a90e2;
+    font-family: monospace;
 }
 
 .current-time {
@@ -475,5 +658,151 @@ button:disabled {
     margin-top: 10px;
     color: #666;
     font-size: 12px;
+}
+
+/* 設定画面のスタイル */
+.settings-info {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    color: #555;
+}
+
+.settings-info p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.settings-container {
+    margin-bottom: 20px;
+}
+
+.settings-loading {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-style: italic;
+}
+
+.settings-section {
+    margin-bottom: 30px;
+}
+
+.settings-section-title {
+    font-size: 20px;
+    color: #333;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #007bff;
+}
+
+.action-setting-card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.action-header {
+    margin-bottom: 15px;
+}
+
+.action-header h3 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.action-description {
+    margin: 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.trigger-settings {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.trigger-setting {
+    flex: 1;
+    min-width: 200px;
+}
+
+.trigger-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.trigger-select {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+}
+
+.trigger-select:hover {
+    border-color: #007bff;
+}
+
+.trigger-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.settings-actions {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #eee;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.save-btn, .reset-btn {
+    padding: 12px 30px;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.save-btn {
+    background: #28a745;
+    color: white;
+}
+
+.save-btn:hover {
+    background: #218838;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.reset-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.reset-btn:hover {
+    background: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+.save-btn:active, .reset-btn:active {
+    transform: translateY(0);
 }
 
