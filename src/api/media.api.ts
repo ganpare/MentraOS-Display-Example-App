@@ -5,8 +5,9 @@ import { TextPager } from '../services/text/TextPager';
 import { displayCurrentPage } from './file.api';
 import { getUserSettings, convertActionMappingsToButtonMappings } from '../services/settings/UserSettings';
 import { debugLog, debugError } from '../utils/debug';
+import { SubtitleEntry } from '../services/audio/SRTParser';
 
-interface MediaEventHistoryEntry {
+export interface MediaEventHistoryEntry {
   userId: string;
   eventType: string;
   timestamp: number;
@@ -25,6 +26,16 @@ export interface MediaAPIDependencies {
   // 音声プレーヤー制御用（オプション）
   sessionCommandQueues?: Map<string, Array<{ type: 'seek' | 'speed' | 'play' | 'pause' | 'next' | 'prev'; value?: number; timestamp: number }>>;
   sessionPlaybackStates?: Map<string, { currentSubtitleIndex: number; currentTime: number; lastUpdateTime: number }>;
+  // セッションごとの現在のページ状態（'top', 'textReader', 'audioPlayer', 'btController', 'settings'）
+  sessionCurrentPages?: Map<string, string>;
+  // 直近のコンテンツページ（textReader/audioPlayer）
+  sessionLastContentPages?: Map<string, string>;
+  // セッションごとの現在再生中の音声ファイルID
+  sessionAudioIds?: Map<string, string>;
+  // 字幕キャッシュ（サーバー側で字幕制御するため）
+  subtitleCache?: Map<string, SubtitleEntry[]>;
+  // セッションごとの最新のメディアイベント情報（display_eventにメタデータを含めるため）
+  sessionLastMediaEvents?: Map<string, MediaEventHistoryEntry | null>;
   getUserIdFromSession?: (session: AppSession) => string | null;
 }
 
@@ -35,32 +46,12 @@ async function executeAction(
   session: AppSession,
   sessionId: string,
   sessionPagers: Map<string, TextPager>,
-  deps?: MediaAPIDependencies
+  deps?: MediaAPIDependencies,
+  suppressMessage: boolean = false
 ): Promise<void> {
-  debugLog(`アクション実行: ${actionType}, value: ${actionValue}`);
   
   switch (actionType) {
-    case 'text_nextpage': {
-      const pager = sessionPagers.get(sessionId);
-      if (!pager) {
-        session.layouts.showTextWall('テキストがアップロードされていません', {
-          view: ViewType.MAIN,
-          durationMs: 3000
-        });
-        return;
-      }
-      const moved = pager.nextPage();
-      if (!moved) {
-        session.layouts.showTextWall('最後のページです', {
-          view: ViewType.MAIN,
-          durationMs: 2000
-        });
-        return;
-      }
-      await displayCurrentPage(session, sessionId, sessionPagers);
-      break;
-    }
-    
+    case 'text_nextpage':
     case 'text_prevpage': {
       const pager = sessionPagers.get(sessionId);
       if (!pager) {
@@ -70,15 +61,89 @@ async function executeAction(
         });
         return;
       }
-      const moved = pager.prevPage();
+      
+      const moved = actionType === 'text_nextpage' ? pager.nextPage() : pager.prevPage();
       if (!moved) {
-        session.layouts.showTextWall('最初のページです', {
+        const message = actionType === 'text_nextpage' ? '最後のページです' : '最初のページです';
+        session.layouts.showTextWall(message, {
           view: ViewType.MAIN,
           durationMs: 2000
         });
         return;
       }
-      await displayCurrentPage(session, sessionId, sessionPagers);
+      
+      // 最新のメディアイベント情報を取得してdisplayCurrentPageに渡す
+      const lastMediaEvent = deps?.sessionLastMediaEvents?.get(sessionId) || null;
+      await displayCurrentPage(session, sessionId, sessionPagers, lastMediaEvent);
+      break;
+    }
+    
+    case 'audio_next_subtitle':
+    case 'audio_prev_subtitle': {
+      // サーバー側で字幕インデックスを管理してARグラスに直接表示（テキストリーダーと同じ方式）
+      if (!deps?.sessionPlaybackStates || !deps?.sessionAudioIds || !deps?.subtitleCache) {
+        debugError('音声プレーヤー制御に必要な依存関係が不足しています');
+        return;
+      }
+      
+      const audioId = deps.sessionAudioIds.get(sessionId);
+      if (!audioId) {
+        debugError('現在再生中の音声ファイルIDが見つかりません');
+        return;
+      }
+      
+      const subtitles = deps.subtitleCache.get(audioId);
+      if (!subtitles || subtitles.length === 0) {
+        debugError('字幕データが見つかりません');
+        return;
+      }
+      
+      const playbackState = deps.sessionPlaybackStates.get(sessionId);
+      if (!playbackState) {
+        debugError('再生状態が見つかりません');
+        return;
+      }
+      
+      let newIndex = playbackState.currentSubtitleIndex;
+      if (actionType === 'audio_next_subtitle') {
+        // 次の字幕に移動（最後の字幕を超えないように）
+        newIndex = Math.min(newIndex + 1, subtitles.length - 1);
+      } else {
+        // 前の字幕に移動（最初の字幕より前には行かない）
+        newIndex = Math.max(newIndex - 1, -1); // -1は字幕なし状態
+      }
+      
+      // インデックスが有効な範囲内かチェック
+      if (newIndex >= 0 && newIndex < subtitles.length) {
+        const subtitle = subtitles[newIndex];
+        
+        // 字幕をARグラスに表示
+        session.layouts.showTextWall(subtitle.text, {
+          view: ViewType.MAIN
+        });
+        
+        // 再生状態を更新
+        playbackState.currentSubtitleIndex = newIndex;
+        playbackState.lastUpdateTime = Date.now();
+        
+        // WebView側の<audio>要素もシークする必要があるので、コマンドキューに追加
+        if (deps.sessionCommandQueues) {
+          const commandQueue = deps.sessionCommandQueues.get(sessionId) || [];
+          commandQueue.push({
+            type: 'seek',
+            value: subtitle.startTime,
+            timestamp: Date.now()
+          });
+          deps.sessionCommandQueues.set(sessionId, commandQueue);
+        }
+        
+        debugLog(`字幕変更: インデックス ${playbackState.currentSubtitleIndex} → ${newIndex}, 時間 ${subtitle.startTime}s`);
+      } else if (newIndex === -1) {
+        // 字幕なし状態に戻る
+        playbackState.currentSubtitleIndex = -1;
+        playbackState.lastUpdateTime = Date.now();
+        debugLog(`字幕をクリア: インデックス → -1`);
+      }
       break;
     }
     
@@ -88,11 +153,9 @@ async function executeAction(
     case 'audio_prev':
     case 'audio_skip_forward':
     case 'audio_skip_backward':
-    case 'audio_next_subtitle':
-    case 'audio_prev_subtitle':
     case 'audio_repeat':
     case 'audio_speed': {
-      // 音声プレーヤー制御はコマンドキューを使用
+      // これらのアクションはWebView側の<audio>要素を制御する必要があるため、コマンドキューを使用
       if (!deps?.sessionCommandQueues) {
         debugError('音声プレーヤー制御キューが利用できません');
         return;
@@ -116,39 +179,20 @@ async function executeAction(
         });
         debugLog(`音声シーク: ${currentTime}s → ${newTime}s (${actionType === 'audio_skip_forward' ? '+' : '-'}${skipSeconds}s)`);
       } else {
-        // 再生/一時停止/次のトラック/前のトラック/字幕制御/リピート/速度変更はコマンドキューに追加
-        // クライアント側のaudioPlayer.jsがポーリングで取得して処理
+        // 再生/一時停止/次のトラック/前のトラック/リピート/速度変更はコマンドキューに追加
         const commandType = actionType === 'audio_play' ? 'play' :
                           actionType === 'audio_pause' ? 'pause' :
                           actionType === 'audio_next' ? 'next' :
                           actionType === 'audio_prev' ? 'prev' :
-                          actionType === 'audio_next_subtitle' ? 'next_subtitle' :
-                          actionType === 'audio_prev_subtitle' ? 'prev_subtitle' :
                           actionType === 'audio_repeat' ? 'repeat' :
                           actionType === 'audio_speed' ? 'speed' : null;
         
         if (commandType) {
-          // ControlCommand形式に合わせて拡張
           (commandQueue as any[]).push({
             type: commandType,
             timestamp: Date.now()
           });
           debugLog(`音声制御コマンド追加: ${commandType}`);
-        } else {
-          const messages: Record<string, string> = {
-            'audio_play': '再生',
-            'audio_pause': '一時停止',
-            'audio_next': '次のトラック',
-            'audio_prev': '前のトラック',
-            'audio_next_subtitle': '次字幕',
-            'audio_prev_subtitle': '前字幕',
-            'audio_repeat': 'リピート',
-            'audio_speed': '速度変更'
-          };
-          session.layouts.showTextWall(`${messages[actionType] || actionType} ⏯️`, {
-            view: ViewType.MAIN,
-            durationMs: 2000
-          });
         }
       }
       
@@ -176,12 +220,25 @@ async function handleMediaEvent(
     seekType?: number;
     userId?: string;
     currentPage?: string; // 現在のページ情報（'textReader', 'audioPlayer', 'top', etc.）
+    source?: string; // イベントの発生元（'bluetooth', 'webview', etc.）
     deps?: MediaAPIDependencies;
   } = {}
 ): Promise<void> {
   const eventTypeLower = eventType.toLowerCase().trim();
   const currentPage = options.currentPage || 'top';
-  debugLog(`メディアイベント受信: ${eventType} (${eventTypeLower}), 現在のページ: ${currentPage}`);
+  
+  debugLog(`handleMediaEvent開始: eventType=${eventTypeLower}, currentPage=${currentPage}, source=${options.source || 'webview'}, isDoubleClick=${options.isDoubleClick || false}`);
+  
+  // Bluetoothコントローラーからのメディアコントロールイベントの場合、
+  // いかなる状況でもメッセージを表示しない（ただし、bluetooth-iosは除く）
+  // bluetooth-iosはiOS側から直接送信されるため、通常の処理を行う
+  const isBluetoothEvent = options.source === 'bluetooth' || options.source === 'bluetooth-webview';
+  const isMediaControlEvent = ['playpause', 'nexttrack', 'prevtrack', 'play', 'pause', 'stop', 'skipforward', 'skipbackward'].includes(eventTypeLower);
+  
+  // メッセージ表示を抑制するかどうか
+  // Bluetoothイベント、またはメディアコントロールイベントでcurrentPageがtopの場合は抑制
+  const shouldSuppressMessage = (isBluetoothEvent && isMediaControlEvent) || 
+                                 (isMediaControlEvent && currentPage === 'top');
 
   let sessionId: string | undefined;
   for (const [id, s] of sessions.entries()) {
@@ -231,43 +288,50 @@ async function handleMediaEvent(
   // 現在のページに基づいてアクションを決定
   if (userSettings && userSettings.actionMappings && ['playpause', 'nexttrack', 'prevtrack'].includes(eventTypeLower)) {
     // 現在のページに応じてアクションをフィルタリング
-    const pageActionPrefix = currentPage === 'textReader' ? 'text_' : 
-                             currentPage === 'audioPlayer' ? 'audio_' : null;
+    // currentPageが'top'または未指定の場合（iOS側からの直接送信など）、
+    // text_とaudio_の両方を検索する
+    let actionPrefixes: string[] = [];
+    if (currentPage === 'textReader') {
+      actionPrefixes = ['text_'];
+    } else if (currentPage === 'audioPlayer') {
+      actionPrefixes = ['audio_'];
+    } else {
+      // 'top'または未指定の場合、両方を検索
+      actionPrefixes = ['text_', 'audio_'];
+    }
     
-    if (pageActionPrefix) {
-      const clickType = options.isDoubleClick ? 'double' : 'single';
+    const clickType = options.isDoubleClick ? 'double' : 'single';
+    
+    // 該当するページのアクションを検索
+    for (const [actionId, mapping] of Object.entries(userSettings.actionMappings)) {
+      if (!mapping) continue;
       
-      // 該当するページのアクションのみを検索
-      for (const [actionId, mapping] of Object.entries(userSettings.actionMappings)) {
-        if (!mapping) continue;
+      // 現在のページに属するアクションのみをチェック
+      const matchesPage = actionPrefixes.some(prefix => actionId.startsWith(prefix));
+      if (!matchesPage) continue;
+      
+      const triggerMapping = mapping[clickType];
+      if (triggerMapping && triggerMapping.trigger === eventTypeLower) {
+        // アクションIDをアクションタイプに変換
+        const actionTypeMap: Record<string, string> = {
+          'text_prevBtn': 'text_prevpage',
+          'text_nextBtn': 'text_nextpage',
+          'audio_playBtn': 'audio_play',
+          'audio_pauseBtn': 'audio_pause',
+          'audio_skipForwardBtn': 'audio_skip_forward',
+          'audio_skipBackwardBtn': 'audio_skip_backward',
+          'audio_nextSubtitleBtn': 'audio_next_subtitle',
+          'audio_prevSubtitleBtn': 'audio_prev_subtitle',
+          'audio_repeatSubtitleBtn': 'audio_repeat',
+          'audio_speedBtn': 'audio_speed'
+        };
         
-        // 現在のページに属するアクションのみをチェック
-        if (!actionId.startsWith(pageActionPrefix)) continue;
-        
-        const triggerMapping = mapping[clickType];
-        if (triggerMapping && triggerMapping.trigger === eventTypeLower) {
-          // アクションIDをアクションタイプに変換
-          const actionTypeMap: Record<string, string> = {
-            'text_prevBtn': 'text_prevpage',
-            'text_nextBtn': 'text_nextpage',
-            'audio_playBtn': 'audio_play',
-            'audio_pauseBtn': 'audio_pause',
-            'audio_skipForwardBtn': 'audio_skip_forward',
-            'audio_skipBackwardBtn': 'audio_skip_backward',
-            'audio_nextSubtitleBtn': 'audio_next_subtitle',
-            'audio_prevSubtitleBtn': 'audio_prev_subtitle',
-            'audio_repeatSubtitleBtn': 'audio_repeat',
-            'audio_speedBtn': 'audio_speed'
-          };
-          
-          const actionType = actionTypeMap[actionId];
-          if (actionType) {
-            debugLog(`設定に基づいて動作を実行: ${actionType} (アクションID: ${actionId}, ページ: ${currentPage}, ${clickType})`);
-            
-            // アクションを実行
-            await executeAction(actionType, undefined, session, sessionId, sessionPagers, options.deps);
-            return;
-          }
+        const actionType = actionTypeMap[actionId];
+        if (actionType) {
+          // アクションを実行（メッセージ抑制フラグを渡す）
+          await executeAction(actionType, undefined, session, sessionId, sessionPagers, options.deps, shouldSuppressMessage);
+          debugLog(`アクション実行: ${actionType} (トリガー: ${eventTypeLower}, ページ: ${currentPage}, クリック: ${clickType})`);
+          return;
         }
       }
     }
@@ -285,51 +349,61 @@ async function handleMediaEvent(
       if (action.type !== 'none') {
         debugLog(`設定に基づいて動作を実行（旧形式）: ${action.type} (${options.isDoubleClick ? 'double' : 'single'})`);
         
-        // 設定に基づいて動作を実行
-        await executeAction(action.type, action.value, session, sessionId, sessionPagers, options.deps);
+        // 設定に基づいて動作を実行（メッセージ抑制フラグを渡す）
+        await executeAction(action.type, action.value, session, sessionId, sessionPagers, options.deps, shouldSuppressMessage);
         return;
       }
+    }
+  }
+
+  // 追加のデフォルト動作（設定が無い場合の安全網）
+  // currentPage の文脈でメディアコントロールを素直に解釈
+  if (['nexttrack', 'prevtrack', 'skipforward', 'skipbackward'].includes(eventTypeLower)) {
+    if (currentPage === 'audioPlayer') {
+      let actionType: string = ''
+      let actionValue: number | undefined = undefined
+      if (eventTypeLower === 'nexttrack') actionType = 'audio_next_subtitle'
+      else if (eventTypeLower === 'prevtrack') actionType = 'audio_prev_subtitle'
+      else if (eventTypeLower === 'skipforward') { actionType = 'audio_skip_forward'; actionValue = options.interval || 10 }
+      else if (eventTypeLower === 'skipbackward') { actionType = 'audio_skip_backward'; actionValue = options.interval || 10 }
+      await executeAction(actionType, actionValue, session, sessionId, sessionPagers, options.deps, true);
+      debugLog(`デフォルト動作: ${actionType} (ページ: ${currentPage}, 設定未定義)`);
+      return;
+    }
+    if (currentPage === 'textReader') {
+      const actionType = eventTypeLower === 'nexttrack' ? 'text_nextpage' : 'text_prevpage';
+      await executeAction(actionType, undefined, session, sessionId, sessionPagers, options.deps, true);
+      debugLog(`デフォルト動作: ${actionType} (ページ: ${currentPage}, 設定未定義)`);
+      return;
     }
   }
 
   // デフォルト動作（従来の処理）
   if (eventTypeLower === 'nextpage' || eventTypeLower === 'prevpage') {
     debugLog(`ページング処理開始: eventType=${eventTypeLower}`);
-    const pager = sessionPagers.get(sessionId);
-    
-    if (!pager) {
-      debugError('TextPagerが見つかりません');
-      session.layouts.showTextWall('テキストがアップロードされていません', {
-        view: ViewType.MAIN,
-        durationMs: 3000
-      });
-      return;
-    }
-
-    let moved = false;
-    if (eventTypeLower === 'nextpage') {
-      moved = pager.nextPage();
-      if (!moved) {
-        session.layouts.showTextWall('最後のページです', {
-          view: ViewType.MAIN,
-          durationMs: 2000
-        });
-        return;
-      }
-    } else if (eventTypeLower === 'prevpage') {
-      moved = pager.prevPage();
-      if (!moved) {
-        session.layouts.showTextWall('最初のページです', {
-          view: ViewType.MAIN,
-          durationMs: 2000
-        });
-        return;
-      }
-    }
-
-    await displayCurrentPage(session, sessionId, sessionPagers);
+    // executeActionを呼び出すことで重複コードを削減
+    const actionType = eventTypeLower === 'nextpage' ? 'text_nextpage' : 'text_prevpage';
+    await executeAction(actionType, undefined, session, sessionId, sessionPagers, options.deps, shouldSuppressMessage);
     return;
   }
+
+  // Bluetoothコントローラーからのメディアコントロールイベントの場合、
+  // いかなる状況でもメッセージを表示しない（設定に基づいてアクションが実行されたか、
+  // 対応するアクションが見つからなかった場合でも）
+      if (shouldSuppressMessage) {
+        // サイレントdisplay_eventは bluetooth-ios 由来のときのみ送る（実表示を上書きしないため）
+        if (source === 'bluetooth-ios') {
+          try {
+            session.layouts.showTextWall(' ', {
+              view: ViewType.DASHBOARD,
+              durationMs: 1,
+            });
+          } catch (e) {
+            debugError('サイレントdisplay_event送信に失敗:', e);
+          }
+        }
+        return;
+      }
 
   const eventMessages: Record<string, string> = {
     'play': '再生ボタンが押されました ▶️',
@@ -349,16 +423,13 @@ async function handleMediaEvent(
   };
 
   const message = eventMessages[eventTypeLower] || `${eventType}ボタンが押されました`;
-  debugLog(`[メディアイベント] ${eventType}: ${message}`);
 
-  session.layouts.showTextWall(message, {
-    view: ViewType.MAIN,
-    durationMs: 5000
-  });
-
-  session.layouts.showTextWall(message, {
-    view: ViewType.DASHBOARD,
-    durationMs: 5000
+  // メインとダッシュボード両方にメッセージを表示
+  [ViewType.MAIN, ViewType.DASHBOARD].forEach(view => {
+    session.layouts.showTextWall(message, {
+      view,
+      durationMs: 5000
+    });
   });
 }
 
@@ -372,12 +443,16 @@ export function setupMediaControllerAPI(
   // 最新のメディアイベント履歴を取得
   app.get('/api/media/events/history', (req: any, res: any) => {
     try {
+      debugLog('リクエスト受信: GET /api/media/events/history');
+      
       const userId = (req as any).authUserId;
       if (!userId) {
+        debugError('メディアイベント履歴取得: 認証が必要です');
         return res.status(401).json({ success: false, error: '認証が必要です' });
       }
 
       if (!deps.mediaEventHistory) {
+        debugLog('メディアイベント履歴取得: 履歴が空です');
         return res.json({ success: true, events: [] });
       }
 
@@ -387,11 +462,54 @@ export function setupMediaControllerAPI(
         .slice(-20)
         .reverse();
 
+      debugLog(`メディアイベント履歴取得: userId=${userId}, イベント数=${userEvents.length}`);
+      
+      if (userEvents.length > 0) {
+        const latestEvent = userEvents[0];
+        debugLog(`メディアイベント履歴: 最新イベント eventType=${latestEvent.eventType}, source=${latestEvent.source}, timestamp=${latestEvent.timestamp}`);
+      }
+
       res.json({ 
         success: true, 
         events: userEvents 
       });
     } catch (error: any) {
+      debugError('メディアイベント履歴取得エラー:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 認証/セッション状態の簡易確認用（開発支援）
+  app.get('/api/media/debug/session', (req: any, res: any) => {
+    try {
+      debugLog('リクエスト受信: GET /api/media/debug/session');
+
+      const userId = (req as any).authUserId;
+      const info: any = { success: true };
+
+      if (!userId) {
+        info.authenticated = false;
+        return res.json(info);
+      }
+
+      info.authenticated = true;
+      info.userId = userId;
+
+      const sessionId = deps.userIdToSessionId.get(userId);
+      info.sessionId = sessionId || null;
+      info.hasSession = Boolean(sessionId && deps.sessions.get(sessionId));
+      if (sessionId && deps.sessionCurrentPages) {
+        info.currentPage = deps.sessionCurrentPages.get(sessionId) || 'top';
+      }
+
+      if (deps.mediaEventHistory) {
+        const last = deps.mediaEventHistory.filter(e => e.userId === userId).slice(-1)[0] || null;
+        info.lastEvent = last || null;
+      }
+
+      return res.json(info);
+    } catch (error: any) {
+      debugError('セッションデバッグ取得エラー:', error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
@@ -458,9 +576,83 @@ export function setupMediaControllerAPI(
     });
   });
 
+  // 最新1件を簡易取得（開発支援）
+  app.get('/api/media/events/last', (req: any, res: any) => {
+    try {
+      debugLog('リクエスト受信: GET /api/media/events/last');
+      const userId = (req as any).authUserId;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: '認証が必要です' });
+      }
+      if (!deps.mediaEventHistory) {
+        return res.json({ success: true, event: null });
+      }
+      const last = deps.mediaEventHistory.filter(e => e.userId === userId).slice(-1)[0] || null;
+      return res.json({ success: true, event: last });
+    } catch (error: any) {
+      debugError('最新メディアイベント取得エラー:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 現在のページ状態を更新するエンドポイント
+  app.post('/api/media/page', async (req: any, res: any) => {
+    try {
+      debugLog('リクエスト受信: POST /api/media/page', { body: req.body });
+      
+      const userId = (req as any).authUserId;
+      const { currentPage } = req.body || {};
+      
+      debugLog(`ページ状態更新リクエスト: userId=${userId || '未認証'}, currentPage=${currentPage || '未指定'}`);
+      
+      if (!userId) {
+        debugError('ページ状態更新: 認証が必要です');
+        return res.status(401).json({ success: false, error: '認証が必要です' });
+      }
+      
+      const sessionId = deps.userIdToSessionId.get(userId);
+      if (!sessionId) {
+        debugError(`ページ状態更新: セッションが見つかりません (userId=${userId})`);
+        return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+      }
+      
+      debugLog(`ページ状態更新: セッションID取得成功 sessionId=${sessionId}`);
+      
+      // ページ状態を更新（'top', 'textReader', 'audioPlayer', 'btController', 'settings'）
+      if (currentPage && deps.sessionCurrentPages) {
+        const validPages = ['top', 'textReader', 'audioPlayer', 'btController', 'settings'];
+        if (validPages.includes(currentPage)) {
+          const previousPage = deps.sessionCurrentPages.get(sessionId) || 'none';
+          deps.sessionCurrentPages.set(sessionId, currentPage);
+          debugLog(`ページ状態更新: sessionId=${sessionId}, previousPage=${previousPage}, currentPage=${currentPage}`);
+
+          // 直近コンテンツページを更新（btController/settings/top の場合は上書きしない）
+          if (deps.sessionLastContentPages && (currentPage === 'textReader' || currentPage === 'audioPlayer')) {
+            deps.sessionLastContentPages.set(sessionId, currentPage);
+            debugLog(`直近コンテンツページ更新: sessionId=${sessionId}, lastContentPage=${currentPage}`);
+          }
+        } else {
+          debugError(`ページ状態更新: 無効なページ名 (currentPage=${currentPage})`);
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      debugError('ページ状態更新エラー:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   app.post('/api/media/event', async (req: any, res: any) => {
     try {
-      debugLog('/api/media/event リクエスト受信');
+      debugLog('リクエスト受信: POST /api/media/event', { 
+        body: req.body,
+        query: req.query,
+        headers: { 
+          'content-type': req.headers['content-type'],
+          'user-agent': req.headers['user-agent']
+        }
+      });
       
       const userId = (req as any).authUserId;
       const {
@@ -471,8 +663,11 @@ export function setupMediaControllerAPI(
         seekType,
         source,
         timestamp,
-        currentPage // 現在のページ情報（'textReader', 'audioPlayer', 'top', etc.）
+        currentPage // リクエストから来る場合（WebViewからの送信時）
       } = req.body || {};
+      
+      debugLog(`メディアイベント受信: eventType=${eventType || event}, source=${source || '未指定'}, userId=${userId || '未認証'}, isDoubleClick=${isDoubleClick}`);
+      
       let sessionId: string | undefined;
       let session: AppSession | undefined;
 
@@ -490,9 +685,27 @@ export function setupMediaControllerAPI(
         }
       }
 
-      if (!session) {
-        debugError('セッションが見つかりません');
+      if (!session || !sessionId) {
+        debugError(`セッションが見つかりません (authUserId=${userId || '未認証'}, providedSessionId=${req.body?.sessionId || req.query?.sessionId || 'なし'})`);
         return res.status(404).json({ success: false, error: 'セッションが見つかりません' });
+      }
+
+      // currentPageがリクエストに含まれていない場合、サーバー側の状態から取得
+      let resolvedCurrentPage = currentPage;
+      if (!resolvedCurrentPage && deps.sessionCurrentPages) {
+        resolvedCurrentPage = deps.sessionCurrentPages.get(sessionId) || 'top';
+        debugLog(`ページ状態をサーバー側から取得: sessionId=${sessionId}, currentPage=${resolvedCurrentPage}`);
+      }
+
+      // btController や top の場合は、直近のコンテンツページ（textReader/audioPlayer）を優先利用
+      let effectivePage = resolvedCurrentPage;
+      if ((resolvedCurrentPage === 'btController' || resolvedCurrentPage === 'top' || resolvedCurrentPage === 'settings') 
+          && deps.sessionLastContentPages) {
+        const lastContent = deps.sessionLastContentPages.get(sessionId);
+        if (lastContent === 'textReader' || lastContent === 'audioPlayer') {
+          effectivePage = lastContent;
+          debugLog(`ページ状態フォールバック適用: resolved=${resolvedCurrentPage} → effective=${effectivePage}`);
+        }
       }
 
       const resolvedEventType = eventType || event;
@@ -502,7 +715,23 @@ export function setupMediaControllerAPI(
         return res.status(400).json({ success: false, error: 'eventTypeが必要です' });
       }
 
-      debugLog(`メディアイベント処理開始: eventType=${resolvedEventType}, currentPage=${currentPage || '不明'}`);
+      const resolvedEventTypeLower = resolvedEventType.toLowerCase();
+      
+      // Bluetoothイベントの場合、サーバー側で処理しない（ただし、bluetooth-iosは除く）
+      // すべてmediaControlHandler.jsでGUIボタンをクリックして処理する
+      // bluetooth-iosはiOS側から直接送信されるため、サーバー側で処理する
+      if ((source === 'bluetooth' || source === 'bluetooth-webview') && source !== 'bluetooth-ios' && ['playpause', 'nexttrack', 'prevtrack'].includes(resolvedEventTypeLower)) {
+        debugLog(`Bluetoothイベント '${resolvedEventType}' はクライアント側で処理されるため、サーバー側では処理しません`);
+        return res.json({ 
+          success: true, 
+          message: `Bluetoothイベント「${resolvedEventType}」はクライアント側で処理されます`,
+          handledByClient: true
+        });
+      }
+      
+      // bluetooth-iosイベントはサーバー側で処理する（iOS側から直接送信されるため）
+      debugLog(`メディアイベント処理開始: eventType=${resolvedEventType}, source=${source || 'webview'}, currentPage=${effectivePage || 'top'}, sessionId=${sessionId}`);
+
       await handleMediaEvent(
         session,
         resolvedEventType,
@@ -513,10 +742,16 @@ export function setupMediaControllerAPI(
           interval: typeof interval === 'number' ? interval : undefined,
           seekType: typeof seekType === 'number' ? seekType : undefined,
           userId: userId || undefined,
-          currentPage: currentPage || undefined,
+          currentPage: effectivePage || 'top',
+          source: source || 'webview',
           deps: deps
         }
       );
+
+      debugLog(`メディアイベント処理完了: eventType=${resolvedEventType}`);
+
+      // Note: サイレントdisplay_eventは常時は送らない（実表示を上書きする恐れがあるため）
+      // Bluetooth-iOS 由来でメッセージ抑制中に限り、別箇所の分岐で最小display_eventを送る。
 
       let pageInfo: { currentPage: number; totalPages: number; pageInfo: string } | null = null;
       if (resolvedEventType.toLowerCase() === 'nextpage' || resolvedEventType.toLowerCase() === 'prevpage') {
@@ -531,21 +766,26 @@ export function setupMediaControllerAPI(
       }
 
       // イベント履歴に記録（webviewで表示するため）
+      const eventEntry: MediaEventHistoryEntry = {
+        userId: userId!,
+        eventType: resolvedEventType,
+        timestamp: typeof timestamp === 'number' ? timestamp : Date.now(),
+        source: source || 'webview',
+        isDoubleClick: Boolean(isDoubleClick),
+        interval: typeof interval === 'number' ? interval : undefined,
+        seekType: typeof seekType === 'number' ? seekType : undefined
+      };
+
       if (deps.mediaEventHistory && userId) {
-        deps.mediaEventHistory.push({
-          userId,
-          eventType: resolvedEventType,
-          timestamp: typeof timestamp === 'number' ? timestamp : Date.now(),
-          source: source || 'webview',
-          isDoubleClick: Boolean(isDoubleClick),
-          interval: typeof interval === 'number' ? interval : undefined,
-          seekType: typeof seekType === 'number' ? seekType : undefined
-        });
+        deps.mediaEventHistory.push(eventEntry);
         // 最新100件のみ保持
         if (deps.mediaEventHistory.length > 100) {
           deps.mediaEventHistory.shift();
         }
+        debugLog(`メディアイベント履歴に記録: userId=${userId}, eventType=${eventEntry.eventType}, source=${eventEntry.source}, timestamp=${eventEntry.timestamp}`)
       }
+
+      // イベント履歴への記録のみ（表示はWebSocket経由のdisplay_eventで行われる）
 
       res.json({ 
         success: true, 
@@ -560,4 +800,3 @@ export function setupMediaControllerAPI(
     }
   });
 }
-

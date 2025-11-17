@@ -76,6 +76,19 @@
         stopCommandPolling();
     });
     
+    // ページ変更イベントをリッスン（Bluetoothイベント対応）
+    window.addEventListener('pageChanged', (event) => {
+        if (event.detail.page === 'audioPlayer') {
+            // 音声プレーヤー画面に入ったら、音声ファイルが選択されている場合はポーリングを開始
+            if (currentAudioId && audioPlayer.classList.contains('active')) {
+                startCommandPolling();
+            }
+        } else {
+            // 他の画面に移動したら、ポーリングを停止
+            stopCommandPolling();
+        }
+    });
+    
     // フィルタ変更時の処理
     monthFilter.addEventListener('change', () => {
         filterAndDisplayFiles();
@@ -273,9 +286,8 @@
                 // 設定を読み込み
                 loadAudioSettings();
                 
-                // 命令ポーリングは無効化（Cookie認証の問題があるため）
-                // startCommandPolling();
-                console.log('[DEBUG] Command polling disabled - using direct playbackRate control');
+                // コマンドポーリングを開始（Bluetoothイベント対応）
+                startCommandPolling();
             } else {
                 throw new Error('字幕データの取得に失敗しました');
             }
@@ -424,23 +436,23 @@
     
     // サーバーからの命令をポーリング
     function startCommandPolling() {
-        console.error('[DISABLED] Command polling is disabled due to Cookie auth issues');
-        console.error('[DISABLED] Using direct playbackRate control instead');
-        return; // 完全に無効化
-        
         console.log('[DEBUG] ========================================');
         console.log('[DEBUG] Starting command polling');
         console.log('[DEBUG] ========================================');
         
+        // 既存のポーリングを停止
         if (commandPollingInterval) {
             clearInterval(commandPollingInterval);
         }
         
         commandPollingInterval = setInterval(async () => {
             try {
-                console.log('[DEBUG] Polling /api/audio/commands...');
+                // 音声プレーヤー画面にいる場合のみポーリング
+                if (window.currentActivePage !== 'audioPlayer') {
+                    return;
+                }
+                
                 const data = await apiCall('/api/audio/commands');
-                console.log('[DEBUG] Poll response:', data);
                 
                 if (data.success && data.commands && data.commands.length > 0) {
                     console.log('[DEBUG] ****************************************');
@@ -478,17 +490,11 @@
                             console.log('[DEBUG] Executing previous track');
                             // 前のトラックを再生（実装が必要）
                             // TODO: 現在のファイルリストから前のファイルを取得して再生
-                        } else if (cmd.type === 'next_subtitle') {
-                            console.log('[DEBUG] Executing next subtitle');
-                            if (nextSubtitleBtn) {
-                                nextSubtitleBtn.click();
-                            }
-                        } else if (cmd.type === 'prev_subtitle') {
-                            console.log('[DEBUG] Executing previous subtitle');
-                            if (prevSubtitleBtn) {
-                                prevSubtitleBtn.click();
-                            }
-                        } else if (cmd.type === 'repeat') {
+                           } else if (cmd.type === 'next_subtitle' || cmd.type === 'prev_subtitle') {
+                               // next_subtitleとprev_subtitleはサーバー側で処理されるため、
+                               // WebView側では何もしない（サーバー側で字幕がARグラスに表示される）
+                               console.log(`[DEBUG] ${cmd.type}はサーバー側で処理されます（スキップ）`);
+                           } else if (cmd.type === 'repeat') {
                             console.log('[DEBUG] Executing repeat toggle');
                             if (repeatSubtitleBtn) {
                                 repeatSubtitleBtn.click();

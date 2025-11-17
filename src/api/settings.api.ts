@@ -84,52 +84,102 @@ export function setupSettingsAPI(
       'text_prevBtn': {
         name: '📄 前のページ（テキストリーダー）',
         description: 'テキストリーダーで前のページに移動します',
-        category: 'text'
+        category: 'text',
+        buttonId: 'prevBtn',
+        functionName: 'navigatePage("prevpage", ...)',
+        apiEndpoint: '/api/media/event',
+        serverActionType: 'text_prevpage',
+        implementation: 'textReader.js: prevBtn.addEventListener("click", ...)'
       },
       'text_nextBtn': {
         name: '📄 次のページ（テキストリーダー）',
         description: 'テキストリーダーで次のページに移動します',
-        category: 'text'
+        category: 'text',
+        buttonId: 'nextBtn',
+        functionName: 'navigatePage("nextpage", ...)',
+        apiEndpoint: '/api/media/event',
+        serverActionType: 'text_nextpage',
+        implementation: 'textReader.js: nextBtn.addEventListener("click", ...)'
       },
       'audio_playBtn': {
         name: '▶️ 再生（音声プレーヤー）',
         description: '音声プレーヤーを再生します',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'playBtn',
+        functionName: 'audioElement.play()',
+        apiEndpoint: '/api/audio/commands (コマンドキュー)',
+        serverActionType: 'audio_play',
+        implementation: 'audioPlayer.js: playBtn.addEventListener("click", ...)'
       },
       'audio_pauseBtn': {
         name: '⏸️ 一時停止（音声プレーヤー）',
         description: '音声プレーヤーを一時停止します',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'pauseBtn',
+        functionName: 'audioElement.pause()',
+        apiEndpoint: '/api/audio/commands (コマンドキュー)',
+        serverActionType: 'audio_pause',
+        implementation: 'audioPlayer.js: pauseBtn.addEventListener("click", ...)'
       },
       'audio_skipForwardBtn': {
         name: '⏩ 早送り +10秒（音声プレーヤー）',
         description: '10秒早送りします',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'skipForwardBtn',
+        functionName: 'audioElement.currentTime += 10',
+        apiEndpoint: '/api/audio/commands (コマンドキュー: seek)',
+        serverActionType: 'audio_skip_forward',
+        implementation: 'audioPlayer.js: skipForwardBtn.addEventListener("click", ...)'
       },
       'audio_skipBackwardBtn': {
         name: '⏪ 巻き戻し -10秒（音声プレーヤー）',
         description: '10秒巻き戻しします',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'skipBackwardBtn',
+        functionName: 'audioElement.currentTime -= 10',
+        apiEndpoint: '/api/audio/commands (コマンドキュー: seek)',
+        serverActionType: 'audio_skip_backward',
+        implementation: 'audioPlayer.js: skipBackwardBtn.addEventListener("click", ...)'
       },
       'audio_nextSubtitleBtn': {
         name: '⏭️ 次字幕（音声プレーヤー）',
         description: '次の字幕に移動します',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'nextSubtitleBtn',
+        functionName: 'nextSubtitle()',
+        apiEndpoint: '/api/audio/commands (コマンドキュー: next_subtitle)',
+        serverActionType: 'audio_next_subtitle',
+        implementation: 'audioPlayer.js: nextSubtitleBtn.addEventListener("click", ...)'
       },
       'audio_prevSubtitleBtn': {
         name: '⏮️ 前字幕（音声プレーヤー）',
         description: '前の字幕に移動します',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'prevSubtitleBtn',
+        functionName: 'prevSubtitle()',
+        apiEndpoint: '/api/audio/commands (コマンドキュー: prev_subtitle)',
+        serverActionType: 'audio_prev_subtitle',
+        implementation: 'audioPlayer.js: prevSubtitleBtn.addEventListener("click", ...)'
       },
       'audio_repeatSubtitleBtn': {
         name: '🔁 リピート（音声プレーヤー）',
         description: 'リピートモードを切り替えます',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'repeatSubtitleBtn',
+        functionName: 'toggleRepeat() → /api/audio/repeat',
+        apiEndpoint: '/api/audio/repeat',
+        serverActionType: 'audio_repeat',
+        implementation: 'audioPlayer.js: repeatSubtitleBtn.addEventListener("click", ...)'
       },
       'audio_speedBtn': {
         name: '⚡ 速度変更（音声プレーヤー）',
         description: '再生速度を変更します',
-        category: 'audio'
+        category: 'audio',
+        buttonId: 'speedBtn',
+        functionName: 'changeSpeed() → /api/audio/speed',
+        apiEndpoint: '/api/audio/speed',
+        serverActionType: 'audio_speed',
+        implementation: 'audioPlayer.js: speedBtn.addEventListener("click", ...)'
       }
     };
 

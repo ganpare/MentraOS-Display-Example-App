@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MentraOS App</title>
     <link rel="stylesheet" href="css/styles.css?v=20241104-3">
+    <script>
+      // Strip one-time auth query params after initial load to avoid repeated token exchange attempts
+      (function() {
+        try {
+          var url = new URL(window.location.href);
+          var removed = false;
+          ['aos_temp_token','aos_signed_user_token','cloudApiUrl','cloudApiUrlChecksum'].forEach(function(key){
+            if (url.searchParams.has(key)) { url.searchParams.delete(key); removed = true; }
+          });
+          if (removed) {
+            var q = url.searchParams.toString();
+            var clean = url.pathname + (q ? ('?' + q) : '') + url.hash;
+            window.history.replaceState({}, document.title, clean);
+          }
+        } catch (e) {
+          console.log('[webview] Failed to strip auth params', e);
+        }
+      })();
+    </script>
 </head>
 <body>
     <!-- トップページ -->
@@ -182,6 +201,6 @@
     <script src="js/audioPlayer/audioPlayer.js?v=20241104-3"></script>
     <script src="js/btController/btController.js?v=20241104-3"></script>
     <script src="js/settings/settings.js?v=20241104-3"></script>
-    <script src="js/mediaControlHandler.js?v=20241104-3"></script>
+    <!-- mediaControlHandler.js removed - Bluetooth events are now handled directly by iOS and sent to server -->
 </body>
 </html>

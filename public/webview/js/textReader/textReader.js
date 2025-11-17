@@ -18,6 +18,51 @@
     let selectedFile = null;
     let currentPageInfo = null;
     
+    // ポーリングは削除（WebSocket経由のdisplay_eventでリアルタイムに更新される）
+    // display_eventをリッスンしてARプレビューを更新
+    function handleDisplayEvent(event) {
+        if (window.currentActivePage !== 'textReader') return
+        
+        const displayEvent = event.detail
+        if (!displayEvent || !displayEvent.layout) return
+        
+        // テキストコンテンツが含まれている場合、ARプレビューを更新
+        if (displayEvent.layout.text) {
+            const text = displayEvent.layout.text
+            arDisplayContent.textContent = text
+
+            // ページ情報が付いていない場合は、テキスト末尾の X/Y 形式を推測して更新
+            if (displayEvent.pageInfo) {
+                updatePageInfo(displayEvent.pageInfo)
+            } else {
+                const lines = (text || '').trim().split('\n')
+                const last = lines[lines.length - 1] || ''
+                const m = last.match(/^(\d+)\/(\d+)$/)
+                if (m) {
+                    updatePageInfo({
+                        currentPage: parseInt(m[1], 10),
+                        totalPages: parseInt(m[2], 10),
+                        pageInfo: `${m[1]}/${m[2]}`
+                    })
+                }
+                // サーバーへ /api/text/current は呼ばない（ログ削減 & 即時反映のため）
+            }
+        }
+    }
+    
+    // ARプレビューを即座に更新する関数（Bluetoothイベント対応）
+    // サーバー側でページが変更されたときに呼び出される想定
+    function forceUpdateARDisplay() {
+        if (window.currentActivePage === 'textReader' && currentPageInfo) {
+            updateARDisplay(arDisplayContent);
+        }
+    }
+    
+    // グローバルに公開（サーバー側からのコールバック用、またはポーリング用）
+    window.forceUpdateARDisplay = forceUpdateARDisplay;
+    
+    // ポーリングは削除済み（不要）
+    
     // ページ情報を更新する関数
     function updatePageInfo(pageInfo) {
         if (pageInfo) {
@@ -27,8 +72,30 @@
         if (currentPageInfo) {
             pageInfoEl.textContent = `ページ ${currentPageInfo.pageInfo}`;
         }
-        updateARDisplay(arDisplayContent);
+        // ここで /api/text/current を呼びにいかない（display_eventベースで即時反映する）
     }
+    
+    // WebSocket経由のdisplay_eventをリッスン（サーバー側から送られてくる）
+    window.addEventListener('mentraDisplayEvent', handleDisplayEvent)
+    
+    // ページ変更イベントをリッスン
+    window.addEventListener('pageChanged', (event) => {
+        if (event.detail.page === 'textReader') {
+            // テキストリーダー画面に入ったら、最新のページ情報を取得
+            if (currentPageInfo) {
+                updateARDisplay(arDisplayContent);
+            }
+        }
+    });
+    
+    // ARプレビューのページ情報が更新されたときに、ローカルのページ情報も更新
+    // これはBluetoothイベントでサーバー側からページが変更された場合に発火される
+    window.addEventListener('arDisplayPageInfoUpdated', (event) => {
+        if (event.detail.pageInfo) {
+            // ページ情報を更新（Bluetoothイベントでサーバー側から更新された場合）
+            updatePageInfo(event.detail.pageInfo);
+        }
+    });
     
     // ファイル選択イベント
     fileInput.addEventListener('change', async (e) => {
@@ -78,6 +145,7 @@
                         
                         showSuccess(statusEl, `ファイルを読み込みました。ページ ${currentPageInfo.pageInfo} を表示しました。`);
                         setTimeout(() => updateARDisplay(arDisplayContent), 500);
+                        // ポーリングは削除済み（display_eventでリアルタイムに更新される）
                     } else {
                         showError(statusEl, data.error);
                     }
@@ -125,6 +193,7 @@
             
             showSuccess(statusEl, `ARグラスに表示しました！ページ ${currentPageInfo.pageInfo}`);
             setTimeout(() => updateARDisplay(arDisplayContent), 500);
+            // ポーリングは削除済み（display_eventでリアルタイムに更新される）
         } catch (error) {
             showError(statusEl, `通信エラー: ${error.message}`);
         } finally {
@@ -135,6 +204,7 @@
     // ページナビゲーション
     prevBtn.addEventListener('click', async () => {
         if (!currentPageInfo) return;
+        if (prevBtn.disabled) return;
         prevBtn.disabled = true;
         await navigatePage('prevpage', statusEl, updatePageInfo);
         prevBtn.disabled = false;
@@ -142,9 +212,9 @@
     
     nextBtn.addEventListener('click', async () => {
         if (!currentPageInfo) return;
+        if (nextBtn.disabled) return;
         nextBtn.disabled = true;
         await navigatePage('nextpage', statusEl, updatePageInfo);
         nextBtn.disabled = false;
     });
 })();
-

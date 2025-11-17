@@ -251,3 +251,7 @@ kill <PID>
 - [tmux公式ドキュメント](https://tmux.github.io/)
 - [systemdサービス管理](https://www.freedesktop.org/software/systemd/man/systemd.service.html)
 
+
+
+
+

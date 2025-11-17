@@ -19,7 +19,8 @@ export interface FileAPIDependencies {
 export async function displayCurrentPage(
   session: AppSession,
   sessionId: string,
-  sessionPagers: Map<string, TextPager>
+  sessionPagers: Map<string, TextPager>,
+  lastMediaEvent?: { userId: string; eventType: string; timestamp: number; source?: string; isDoubleClick?: boolean; interval?: number; seekType?: number } | null
 ): Promise<void> {
   const pager = sessionPagers.get(sessionId);
   if (!pager) {
@@ -66,7 +67,11 @@ export function setupFileAPI(
   // デバッグログ（共通）
   if (DEBUG) {
     app.use('/api', (req: any, res: any, next: any) => {
-      debugLog(`リクエスト受信: ${req.method} ${req.path}`);
+      // ノイズ低減: 高頻度エンドポイントはログ抑制
+      const noisyPaths = new Set<string>(['/api/text/current', '/api/audio/commands', '/text/current', '/audio/commands']);
+      if (!noisyPaths.has(req.path)) {
+        debugLog(`リクエスト受信: ${req.method} ${req.path}`);
+      }
       next();
     });
   }

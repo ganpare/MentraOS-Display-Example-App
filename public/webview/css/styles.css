@@ -716,15 +716,57 @@ button:disabled {
 }
 
 .action-description {
-    margin: 0;
+    margin: 0 0 15px 0;
     font-size: 13px;
     color: #666;
+}
+
+.action-details {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.detail-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-label {
+    font-weight: 600;
+    color: #555;
+    min-width: 140px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    flex: 1;
+    color: #333;
+    background: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+    font-size: 11px;
+    word-break: break-all;
+    border: 1px solid #e0e0e0;
 }
 
 .trigger-settings {
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
 }
 
 .trigger-setting {

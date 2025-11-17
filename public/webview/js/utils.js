@@ -56,6 +56,17 @@ async function updateARDisplay(displayElement) {
         
         if (data.success && data.text) {
             displayElement.textContent = data.text;
+            
+            // ページ情報も更新する（Bluetoothイベント対応）
+            if (data.pageInfo) {
+                // カスタムイベントを発火して、textReader.jsにページ情報の更新を通知
+                window.dispatchEvent(new CustomEvent('arDisplayPageInfoUpdated', {
+                    detail: {
+                        pageInfo: data.pageInfo,
+                        text: data.text
+                    }
+                }));
+            }
         }
     } catch (error) {
         console.error('AR表示更新エラー:', error);
@@ -82,7 +93,10 @@ async function navigatePage(eventType, statusEl, updatePageInfoCallback) {
     try {
         const data = await apiCall('/api/media/event', {
             method: 'POST',
-            body: JSON.stringify({ eventType })
+            body: JSON.stringify({ 
+                eventType,
+                source: 'webview' // GUIボタンからのクリック
+            })
         });
         
         if (data.success && data.pageInfo) {

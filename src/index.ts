@@ -8,6 +8,7 @@ import { setupAudioAPI, AudioAPIDependencies } from './api/audio.api';
 import { setupSettingsAPI, SettingsAPIDependencies } from './api/settings.api';
 import { createAuthMiddleware } from './utils/auth';
 import { debugLog, debugError } from './utils/debug';
+import { MediaEventHistoryEntry } from './api/media.api';
 import {
   PACKAGE_NAME,
   MENTRAOS_API_KEY,
@@ -28,6 +29,14 @@ class ExampleMentraOSApp extends AppServer {
   // 音声プレーヤー制御用（共有）
   private sessionCommandQueues: Map<string, Array<{ type: 'seek' | 'speed' | 'play' | 'pause' | 'next' | 'prev'; value?: number; timestamp: number }>> = new Map();
   private sessionPlaybackStates: Map<string, { currentSubtitleIndex: number; currentTime: number; lastUpdateTime: number }> = new Map();
+  // セッションごとの現在のページ状態（'top', 'textReader', 'audioPlayer', 'btController', 'settings'）
+  private sessionCurrentPages: Map<string, string> = new Map();
+  // 直近でユーザーが操作していたコンテンツページ（'textReader' or 'audioPlayer'）
+  private sessionLastContentPages: Map<string, string> = new Map();
+  // セッションごとの現在再生中の音声ファイルID
+  private sessionAudioIds: Map<string, string> = new Map();
+  // セッションごとの最新のメディアイベント情報（display_eventにメタデータを含めるため）
+  private sessionLastMediaEvents: Map<string, MediaEventHistoryEntry | null> = new Map();
 
   constructor() {
     super({
@@ -76,6 +85,11 @@ class ExampleMentraOSApp extends AppServer {
       mediaEventHistory: this.mediaEventHistory,
       sessionCommandQueues: this.sessionCommandQueues,
       sessionPlaybackStates: this.sessionPlaybackStates,
+      sessionCurrentPages: this.sessionCurrentPages,
+      sessionLastContentPages: this.sessionLastContentPages,
+      sessionAudioIds: this.sessionAudioIds,
+      subtitleCache: this.subtitleCache,
+      sessionLastMediaEvents: this.sessionLastMediaEvents,
       getAppSessionForUser: (userId: string) => {
         const sessionId = this.userIdToSessionId.get(userId);
         return sessionId ? this.sessions.get(sessionId) || null : null;
@@ -99,6 +113,7 @@ class ExampleMentraOSApp extends AppServer {
       subtitleCache: this.subtitleCache,
       sessionCommandQueues: this.sessionCommandQueues,
       sessionPlaybackStates: this.sessionPlaybackStates,
+      sessionAudioIds: this.sessionAudioIds,
       getAppSessionForUser: (userId: string) => {
         const sessionId = this.userIdToSessionId.get(userId);
         return sessionId ? this.sessions.get(sessionId) || null : null;
@@ -136,6 +151,9 @@ class ExampleMentraOSApp extends AppServer {
         view: ViewType.DASHBOARD
       });
 
+      // セッション開始時は'top'ページとして初期化
+      this.sessionCurrentPages.set(sessionId, 'top');
+
       // セッション終了時のクリーンアップ
       session.events.onDisconnected(() => {
         debugLog(`セッション終了: sessionId=${sessionId}`);
@@ -143,6 +161,9 @@ class ExampleMentraOSApp extends AppServer {
         this.sessionTexts.delete(sessionId);
         this.sessionPagers.delete(sessionId);
         this.sessionFileTypes.delete(sessionId);
+        this.sessionCurrentPages.delete(sessionId);
+        this.sessionAudioIds.delete(sessionId);
+        this.sessionLastMediaEvents.delete(sessionId);
         this.userIdToSessionId.delete(userId);
       });
 

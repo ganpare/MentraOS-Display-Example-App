@@ -1,0 +1,86 @@
+{
+  "userId": "contact645@gmail.com",
+  "actionMappings": {
+    "text_prevBtn": {
+      "single": {
+        "trigger": "prevtrack"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "text_nextBtn": {
+      "single": {
+        "trigger": "nexttrack"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_playBtn": {
+      "single": {
+        "trigger": "playpause"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_pauseBtn": {
+      "single": {
+        "trigger": "playpause"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_skipForwardBtn": {
+      "single": {
+        "trigger": "none"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_skipBackwardBtn": {
+      "single": {
+        "trigger": "none"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_nextSubtitleBtn": {
+      "single": {
+        "trigger": "nexttrack"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_prevSubtitleBtn": {
+      "single": {
+        "trigger": "prevtrack"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    },
+    "audio_repeatSubtitleBtn": {
+      "single": {
+        "trigger": "none"
+      },
+      "double": {
+        "trigger": "playpause"
+      }
+    },
+    "audio_speedBtn": {
+      "single": {
+        "trigger": "none"
+      },
+      "double": {
+        "trigger": "none"
+      }
+    }
+  },
+  "updatedAt": 1763209547884
+}

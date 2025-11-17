@@ -206,3 +206,18 @@ Check out the full documentation at [docs.mentra.glass](https://docs.mentra.glas
 #### Subscribing to events
 
 You can listen for transcriptions, translations, and other events within the onSession function.
+
+## 📚 ドキュメント
+
+- **[BLUETOOTH_CONTROL_ARCHITECTURE.md](./BLUETOOTH_CONTROL_ARCHITECTURE.md)**: Bluetoothコントローラー統合アーキテクチャ
+  - Bluetoothイベントの処理フロー
+  - 設定画面での管理方法
+  - 機能追加方法
+
+- **[BUTTON_REFERENCE.md](./BUTTON_REFERENCE.md)**: ボタンリファレンス
+  - 各画面のGUIボタンと機能
+  - Bluetoothコントローラー連携
+
+- **[SERVER_PERSISTENCE.md](./SERVER_PERSISTENCE.md)**: サーバー永続化の仕組み
+  - byobu/tmux での起動方法
+  - systemd サービス化の手順

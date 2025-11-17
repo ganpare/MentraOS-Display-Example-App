@@ -130,6 +130,68 @@
         
         let html = '';
         
+        // アクションカードのHTMLを生成する関数
+        function renderActionCard(action, mapping) {
+            return `
+                <div class="action-setting-card">
+                    <div class="action-header">
+                        <h3>${action.name}</h3>
+                        <p class="action-description">${action.description}</p>
+                        <div class="action-details">
+                            <div class="detail-item">
+                                <span class="detail-label">アクションID:</span>
+                                <code class="detail-value">${action.id}</code>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">ボタンID:</span>
+                                <code class="detail-value">${action.buttonId || 'N/A'}</code>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">関数:</span>
+                                <code class="detail-value">${action.functionName || 'N/A'}</code>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">サーバー側アクション:</span>
+                                <code class="detail-value">${action.serverActionType || 'N/A'}</code>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">API:</span>
+                                <code class="detail-value">${action.apiEndpoint || 'N/A'}</code>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">実装:</span>
+                                <code class="detail-value">${action.implementation || 'N/A'}</code>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="trigger-settings">
+                        <div class="trigger-setting">
+                            <label class="trigger-label">シングルクリック</label>
+                            <select id="${action.id}-single-trigger" class="trigger-select">
+                                ${Object.keys(availableTriggers).map(triggerId => {
+                                    const selected = mapping.single?.trigger === triggerId ? 'selected' : '';
+                                    const triggerName = triggerNames[triggerId] || triggerId;
+                                    return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
+                                }).join('')}
+                            </select>
+                        </div>
+                        
+                        <div class="trigger-setting">
+                            <label class="trigger-label">ダブルクリック</label>
+                            <select id="${action.id}-double-trigger" class="trigger-select">
+                                ${Object.keys(availableTriggers).map(triggerId => {
+                                    const selected = mapping.double?.trigger === triggerId ? 'selected' : '';
+                                    const triggerName = triggerNames[triggerId] || triggerId;
+                                    return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
+                                }).join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
         // テキストリーダーセクション
         if (actionsByCategory.text.length > 0) {
             html += `
@@ -140,39 +202,7 @@
                             single: { trigger: 'none' },
                             double: { trigger: 'none' }
                         };
-                        
-                        return `
-                            <div class="action-setting-card">
-                                <div class="action-header">
-                                    <h3>${action.name}</h3>
-                                    <p class="action-description">${action.description}</p>
-                                </div>
-                                
-                                <div class="trigger-settings">
-                                    <div class="trigger-setting">
-                                        <label class="trigger-label">シングルクリック</label>
-                                        <select id="${action.id}-single-trigger" class="trigger-select">
-                                            ${Object.keys(availableTriggers).map(triggerId => {
-                                                const selected = mapping.single?.trigger === triggerId ? 'selected' : '';
-                                                const triggerName = triggerNames[triggerId] || triggerId;
-                                                return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
-                                            }).join('')}
-                                        </select>
-                                    </div>
-                                    
-                                    <div class="trigger-setting">
-                                        <label class="trigger-label">ダブルクリック</label>
-                                        <select id="${action.id}-double-trigger" class="trigger-select">
-                                            ${Object.keys(availableTriggers).map(triggerId => {
-                                                const selected = mapping.double?.trigger === triggerId ? 'selected' : '';
-                                                const triggerName = triggerNames[triggerId] || triggerId;
-                                                return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
-                                            }).join('')}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
+                        return renderActionCard(action, mapping);
                     }).join('')}
                 </div>
             `;
@@ -188,39 +218,7 @@
                             single: { trigger: 'none' },
                             double: { trigger: 'none' }
                         };
-                        
-                        return `
-                            <div class="action-setting-card">
-                                <div class="action-header">
-                                    <h3>${action.name}</h3>
-                                    <p class="action-description">${action.description}</p>
-                                </div>
-                                
-                                <div class="trigger-settings">
-                                    <div class="trigger-setting">
-                                        <label class="trigger-label">シングルクリック</label>
-                                        <select id="${action.id}-single-trigger" class="trigger-select">
-                                            ${Object.keys(availableTriggers).map(triggerId => {
-                                                const selected = mapping.single?.trigger === triggerId ? 'selected' : '';
-                                                const triggerName = triggerNames[triggerId] || triggerId;
-                                                return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
-                                            }).join('')}
-                                        </select>
-                                    </div>
-                                    
-                                    <div class="trigger-setting">
-                                        <label class="trigger-label">ダブルクリック</label>
-                                        <select id="${action.id}-double-trigger" class="trigger-select">
-                                            ${Object.keys(availableTriggers).map(triggerId => {
-                                                const selected = mapping.double?.trigger === triggerId ? 'selected' : '';
-                                                const triggerName = triggerNames[triggerId] || triggerId;
-                                                return `<option value="${triggerId}" ${selected}>${triggerName}</option>`;
-                                            }).join('')}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
+                        return renderActionCard(action, mapping);
                     }).join('')}
                 </div>
             `;

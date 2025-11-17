@@ -12,10 +12,8 @@
     
     // 状態管理
     let eventLog = [];
-    let pollInterval = null;
     let lastEventTime = null;
     let connectionTimeout = null;
-    let lastCheckedTimestamp = 0;
     let processedEventIds = new Set();
     let lastNativeEventTimestamp = 0;
     let processedNativeEventIds = new Set();
@@ -156,18 +154,25 @@
     
     // 初期化
     function initBtController() {
-        if (!isInitialized) {
-            // テストボタンのイベントリスナー
+        console.log('[DEBUG] initBtController called');
+        
+        // テストボタンのイベントリスナー（毎回設定、重複を避けるために一度だけ）
+        if (testButtons.length > 0 && !isInitialized) {
             testButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const eventType = btn.getAttribute('data-event');
+                // 既存のリスナーを削除してから追加（重複を避ける）
+                const newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                newBtn.addEventListener('click', () => {
+                    const eventType = newBtn.getAttribute('data-event');
                     if (eventType) {
                         sendTestEvent(eventType);
                     }
                 });
             });
-            
-            // ログクリアボタン
+        }
+        
+        // ログクリアボタン
+        if (clearLogBtn && !isInitialized) {
             clearLogBtn.addEventListener('click', () => {
                 eventLog = [];
                 processedEventIds.clear();
@@ -175,35 +180,91 @@
                 updateEventLogDisplay();
                 showSuccess(btControllerStatus, 'イベントログをクリアしました');
             });
+        }
+        
+        // WebSocket経由のdisplay_eventをリッスン（サーバー側から送られてくる）
+        // サーバー側でshowTextWall()が呼ばれると、iPhone側にも同じdisplay_eventが届く
+        // それをリッスンしてイベントログに表示する
+        console.log('[DEBUG] Bluetoothコントローラーページ: display_eventの監視を開始（サーバー側から送信される）');
+        
+        // display_eventをリッスンしてイベントログに追加
+        function handleDisplayEvent(event) {
+            console.log('[btController] handleDisplayEvent called:', {
+                currentPage: window.currentActivePage,
+                hasDetail: !!event.detail,
+                hasLayout: !!event.detail?.layout,
+                hasMetadata: !!event.detail?.mediaEventMetadata
+            })
             
-            // 既存のポーリングを停止
-            if (pollInterval) {
-                clearInterval(pollInterval);
+            if (window.currentActivePage !== 'btController') {
+                console.log('[btController] Not on btController page, ignoring')
+                return
             }
             
-            // 最初にサーバーからイベント履歴を取得
-            pollServerEvents();
+            const displayEvent = event.detail
+            if (!displayEvent || !displayEvent.layout) {
+                console.log('[btController] Invalid display event, ignoring')
+                return
+            }
             
-            // 定期的にサーバーから最新イベントを取得（2秒ごと）
-            pollInterval = setInterval(() => {
-                pollServerEvents();
+            // メタデータ（最新のメディアイベント情報）が含まれている場合、イベントログに追加
+            if (displayEvent.mediaEventMetadata) {
+                const mediaEvent = displayEvent.mediaEventMetadata
+                console.log('[btController] Media event metadata found:', {
+                    eventType: mediaEvent.eventType,
+                    source: mediaEvent.source,
+                    timestamp: mediaEvent.timestamp
+                })
                 
-                // 最後のイベントから10秒以上経過していたら待機中に戻す
-                if (lastEventTime) {
-                    const timeSinceLastEvent = Date.now() - lastEventTime;
-                    if (timeSinceLastEvent >= 10000) {
-                        updateConnectionStatus(false);
-                    }
+                // Bluetoothイベントの場合のみイベントログに追加
+                if (mediaEvent.source === 'bluetooth-ios' || mediaEvent.source === 'bluetooth') {
+                    console.log('[btController] Adding Bluetooth event to log')
+                    addEventLog(mediaEvent.eventType, mediaEvent.source || 'bluetooth', {
+                        timestamp: mediaEvent.timestamp,
+                        isDoubleClick: mediaEvent.isDoubleClick,
+                        interval: mediaEvent.interval,
+                        seekType: mediaEvent.seekType
+                    })
+                } else {
+                    console.log('[btController] Not a Bluetooth event, skipping log')
                 }
-            }, 2000);
-
-            isInitialized = true;
+            } else {
+                console.log('[btController] No media event metadata found')
+            }
+            
+            // 接続状態を更新（サーバー側から表示が来たということは接続中）
+            console.log('[btController] Updating connection status to connected')
+            updateConnectionStatus(true)
+            lastEventTime = Date.now()
         }
+        
+        window.addEventListener('mentraDisplayEvent', handleDisplayEvent)
+        
+        // 初期状態は接続待機中
+        updateConnectionStatus(false);
+        
+        // ポーリングは削除済み（display_eventベースで接続状態を管理）
+        // display_eventが来たときに接続状態を更新し、
+        // 一定時間（10秒）経過したら「接続待機中...」に戻す
+        // 最後のイベントから10秒以上経過していたら待機中に戻す（定期的にチェック）
+        setInterval(() => {
+            if (window.currentActivePage !== 'btController') return;
+            if (lastEventTime) {
+                const timeSinceLastEvent = Date.now() - lastEventTime;
+                if (timeSinceLastEvent >= 10000) {
+                    updateConnectionStatus(false);
+                    console.log('[btController] Timeout: No events for 10 seconds, setting to disconnected');
+                }
+            }
+        }, 5000); // 5秒ごとにチェック（接続状態のタイムアウトのみ）
 
+        isInitialized = true;
         updateEventLogDisplay();
         if (!lastEventTime) {
             updateConnectionStatus(false);
         }
+        
+        console.log('[DEBUG] initBtController completed (display_eventベース、ポーリングなし)');
     }
     
     // 最新のイベント履歴を取得
@@ -218,48 +279,23 @@
         }
     }
     
-    // サーバー側で受信したイベントを取得（ポーリング）
-    async function pollServerEvents() {
-        try {
-            const data = await apiCall('/api/media/events/history');
-            
-            if (data.success && data.events && Array.isArray(data.events)) {
-                // 新しいイベントをチェック
-                for (const event of data.events) {
-                    // イベントIDを作成（タイムスタンプ + イベントタイプ）
-                    const eventId = `${event.timestamp}_${event.eventType}_${event.isDoubleClick ? 'double' : 'single'}`;
-                    
-                    // まだ処理していないイベントのみ追加
-                    if (!processedEventIds.has(eventId) && event.timestamp > lastCheckedTimestamp) {
-                        processedEventIds.add(eventId);
-                        
-                        const source = event.source || 'bluetooth';
-                        addEventLog(event.eventType, source, {
-                            timestamp: event.timestamp,
-                            isDoubleClick: event.isDoubleClick,
-                            interval: event.interval,
-                            seekType: event.seekType
-                        });
-                        
-                        // 最新タイムスタンプを更新
-                        if (event.timestamp > lastCheckedTimestamp) {
-                            lastCheckedTimestamp = event.timestamp;
-                        }
-                    }
-                }
-                
-                // processedEventIdsのサイズを制限（メモリリーク防止）
-                if (processedEventIds.size > 100) {
-                    const idsArray = Array.from(processedEventIds);
-                    processedEventIds = new Set(idsArray.slice(-50));
-                }
-            }
-        } catch (error) {
-            console.log('サーバーイベント取得:', error.message);
-        }
-    }
+    // pollServerEventsは削除（SSEに置き換え）
     
     function forwardNativeEvent(detail, isDoubleClickEvent) {
+        // この関数は無効化されました
+        // 通常の動作では、mediaControlHandler.jsが処理します
+        // テストページでのログ表示のみが有効です
+        
+        // テストページでない場合は何もしない
+        const currentPage = window.currentActivePage || 'top';
+        if (currentPage !== 'btController') {
+            return;
+        }
+        
+        // テストページでのみ、サーバーへのPOSTを実行（接続テスト用）
+        // ただし、通常の動作ではmediaControlHandler.jsが処理するため、
+        // ここでのPOSTは重複する可能性があるので、コメントアウト
+        /*
         if (!detail || !detail.eventType) {
             return;
         }
@@ -306,6 +342,7 @@
         }).catch(error => {
             console.warn('iOSメディアイベント送信エラー:', error);
         });
+        */
     }
 
     function logNativeEvent(detail, isDoubleClickEvent = false) {
@@ -329,23 +366,8 @@
         forwardNativeEvent(detail, isDoubleClickEvent);
     }
 
-    window.addEventListener('mentraMediaControl', (event) => {
-        try {
-            const detail = event && event.detail ? event.detail : {};
-            logNativeEvent(detail, false);
-        } catch (error) {
-            console.warn('mentraMediaControl処理中にエラー:', error);
-        }
-    });
-
-    window.addEventListener('mentraMediaControlDoubleClick', (event) => {
-        try {
-            const detail = event && event.detail ? event.detail : {};
-            logNativeEvent(detail, true);
-        } catch (error) {
-            console.warn('mentraMediaControlDoubleClick処理中にエラー:', error);
-        }
-    });
+    // Bluetooth media control events are now handled directly by iOS and sent to server
+    // No event listeners needed here anymore
 
     // グローバルに公開
     window.initBtController = initBtController;

@@ -14,12 +14,26 @@
     // 現在のアクティブページを追跡（グローバルに公開）
     window.currentActivePage = 'top';
     
+    // ページ状態をサーバーに通知する関数
+    async function notifyPageChange(pageName) {
+        try {
+            await apiCall('/api/media/page', {
+                method: 'POST',
+                body: JSON.stringify({ currentPage: pageName })
+            });
+        } catch (error) {
+            console.error('ページ状態通知エラー:', error);
+        }
+    }
+    
     function showPage(pageName) {
         Object.values(pages).forEach(page => page.classList.remove('active'));
         pages[pageName].classList.add('active');
         window.currentActivePage = pageName;
         // ページ変更イベントを発火（他のモジュールで使用可能）
         window.dispatchEvent(new CustomEvent('pageChanged', { detail: { page: pageName } }));
+        // サーバーにページ状態を通知
+        notifyPageChange(pageName);
     }
     
     // トップページナビゲーション
@@ -34,8 +48,24 @@
     document.getElementById('backToTopBtn2').addEventListener('click', () => showPage('top'));
     document.getElementById('btControllerBtn').addEventListener('click', () => {
         showPage('btController');
-        if (window.initBtController) {
-            window.initBtController();
+        // initBtControllerは即座に呼び出す（確実に初期化するため）
+        setTimeout(() => {
+            if (window.initBtController) {
+                window.initBtController();
+            } else {
+                console.error('[ERROR] initBtControllerが見つかりません');
+            }
+        }, 100); // DOM更新を待つ
+    });
+    
+    // ページ変更イベントでも初期化を確認（フォールバック）
+    window.addEventListener('pageChanged', (event) => {
+        if (event.detail.page === 'btController') {
+            setTimeout(() => {
+                if (window.initBtController) {
+                    window.initBtController();
+                }
+            }, 100);
         }
     });
     document.getElementById('backToTopBtn3').addEventListener('click', () => showPage('top'));

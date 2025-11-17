@@ -250,6 +250,12 @@ export function setupAudioAPI(
           if (!sessionCommandQueues.has(sessionId)) {
             sessionCommandQueues.set(sessionId, []);
           }
+          
+          // セッションにaudioIdを紐付け（サーバー側で字幕制御するため）
+          if (deps.sessionAudioIds) {
+            deps.sessionAudioIds.set(sessionId, audioId);
+            debugLog(`セッションにaudioIdを紐付け: sessionId=${sessionId}, audioId=${audioId}`);
+          }
         }
       }
       
@@ -432,10 +438,10 @@ export function setupAudioAPI(
   // 制御命令を取得（ポーリング用）
   app.get('/api/audio/commands', async (req: any, res: any) => {
     try {
-      console.log('[DEBUG] /api/audio/commands called');
-      console.log('[DEBUG] Headers:', JSON.stringify(req.headers, null, 2));
-      console.log('[DEBUG] Cookies:', JSON.stringify(req.cookies, null, 2));
-      console.log('[DEBUG] authUserId:', (req as any).authUserId);
+      if (process.env.DEBUG === 'true') {
+        // 軽量化: 詳細ヘッダは出さない
+        console.log('[DEBUG] /api/audio/commands called');
+      }
       
       const userId = (req as any).authUserId;
       if (!userId) {
@@ -457,10 +463,7 @@ export function setupAudioAPI(
       const validCommands = commandQueue.filter(cmd => (now - cmd.timestamp) < 5000);
       
       if (validCommands.length > 0) {
-        debugLog('[DEBUG] ****************************************');
-        debugLog(`[DEBUG] /api/audio/commands - Sending ${validCommands.length} command(s) to client`);
-        debugLog('[DEBUG] Commands:', JSON.stringify(validCommands, null, 2));
-        debugLog('[DEBUG] ****************************************');
+        debugLog(`[DEBUG] /api/audio/commands - ${validCommands.length} command(s)`);
       }
       
       // キューをクリア
@@ -516,4 +519,3 @@ export function setupAudioAPI(
     }
   });
 }
-
